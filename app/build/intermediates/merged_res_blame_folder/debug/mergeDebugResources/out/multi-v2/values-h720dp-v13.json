@@ -1,10 +1,10 @@
 {
     "logs": [
         {
-            "outputFile": "com.snidman.statsapp-mergeDebugResources-56:/values-h720dp-v13/values-h720dp-v13.xml",
+            "outputFile": "com.snidman.statsapp-mergeDebugResources-62:/values-h720dp-v13/values-h720dp-v13.xml",
             "map": [
                 {
-                    "source": "/home/codespace/.gradle/caches/9.2.1/transforms/3c1f35fecb79de4c029f4d6617945eed/transformed/appcompat-1.6.1/res/values-h720dp-v13/values-h720dp-v13.xml",
+                    "source": "/home/codespace/.gradle/caches/9.2.1/transforms/f2309d65acef2cd11c3dce5b0d3cb89c/transformed/appcompat-1.6.1/res/values-h720dp-v13/values-h720dp-v13.xml",
                     "from": {
                         "startLines": "2",
                         "startColumns": "4",

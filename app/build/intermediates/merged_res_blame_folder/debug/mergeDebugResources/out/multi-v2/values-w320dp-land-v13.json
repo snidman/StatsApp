@@ -1,10 +1,10 @@
 {
     "logs": [
         {
-            "outputFile": "com.snidman.statsapp-mergeDebugResources-56:/values-w320dp-land-v13/values-w320dp-land-v13.xml",
+            "outputFile": "com.snidman.statsapp-mergeDebugResources-62:/values-w320dp-land-v13/values-w320dp-land-v13.xml",
             "map": [
                 {
-                    "source": "/home/codespace/.gradle/caches/9.2.1/transforms/13ca18d9094852bcc8a0d73391c8a1a8/transformed/material-1.12.0/res/values-w320dp-land-v13/values-w320dp-land-v13.xml",
+                    "source": "/home/codespace/.gradle/caches/9.2.1/transforms/4323a7315ce15a4b1471e551541ad957/transformed/material-1.12.0/res/values-w320dp-land-v13/values-w320dp-land-v13.xml",
                     "from": {
                         "startLines": "2,3",
                         "startColumns": "4,4",
