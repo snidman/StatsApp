@@ -33,7 +33,8 @@ The app now supports full player-based stat tracking with local persistence.
 - Uses Room database for local persistence.
 - Sessions survive app restarts.
 - Match filter and set filter (`All`, `1..5`) are available on screen.
-- Create additional matches directly in the app.
+- Create additional matches directly in the app, including opposing team name.
+- Edit selected match name and opposing team name.
 - Delete the selected match.
 - Delete the selected set's events.
 - Delete individual players.

@@ -59,6 +59,9 @@ interface MatchDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMatch(match: MatchEntity): Long
 
+    @Query("UPDATE matches SET name = :name, opponentTeamName = :opponentTeamName WHERE id = :matchId")
+    suspend fun updateMatch(matchId: Long, name: String, opponentTeamName: String)
+
     @Query("DELETE FROM matches WHERE id = :matchId")
     suspend fun deleteMatch(matchId: Long)
 }

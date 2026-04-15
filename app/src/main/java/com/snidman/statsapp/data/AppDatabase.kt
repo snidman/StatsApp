@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [PlayerEntity::class, TeamEntity::class, MatchEntity::class, StatEventEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -33,6 +33,12 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE matches ADD COLUMN opponentTeamName TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
@@ -44,6 +50,7 @@ abstract class AppDatabase : RoomDatabase() {
                     "stats_app.db"
                 )
                     .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_2_3)
                     .build()
                     .also { INSTANCE = it }
             }

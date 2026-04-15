@@ -35,6 +35,8 @@ public final class MatchDao_Impl implements MatchDao {
 
   private final EntityInsertionAdapter<MatchEntity> __insertionAdapterOfMatchEntity;
 
+  private final SharedSQLiteStatement __preparedStmtOfUpdateMatch;
+
   private final SharedSQLiteStatement __preparedStmtOfDeleteMatch;
 
   public MatchDao_Impl(@NonNull final RoomDatabase __db) {
@@ -43,7 +45,7 @@ public final class MatchDao_Impl implements MatchDao {
       @Override
       @NonNull
       protected String createQuery() {
-        return "INSERT OR REPLACE INTO `matches` (`id`,`name`,`createdAt`) VALUES (nullif(?, 0),?,?)";
+        return "INSERT OR REPLACE INTO `matches` (`id`,`name`,`opponentTeamName`,`createdAt`) VALUES (nullif(?, 0),?,?,?)";
       }
 
       @Override
@@ -51,7 +53,16 @@ public final class MatchDao_Impl implements MatchDao {
           @NonNull final MatchEntity entity) {
         statement.bindLong(1, entity.getId());
         statement.bindString(2, entity.getName());
-        statement.bindLong(3, entity.getCreatedAt());
+        statement.bindString(3, entity.getOpponentTeamName());
+        statement.bindLong(4, entity.getCreatedAt());
+      }
+    };
+    this.__preparedStmtOfUpdateMatch = new SharedSQLiteStatement(__db) {
+      @Override
+      @NonNull
+      public String createQuery() {
+        final String _query = "UPDATE matches SET name = ?, opponentTeamName = ? WHERE id = ?";
+        return _query;
       }
     };
     this.__preparedStmtOfDeleteMatch = new SharedSQLiteStatement(__db) {
@@ -77,6 +88,36 @@ public final class MatchDao_Impl implements MatchDao {
           return _result;
         } finally {
           __db.endTransaction();
+        }
+      }
+    }, $completion);
+  }
+
+  @Override
+  public Object updateMatch(final long matchId, final String name, final String opponentTeamName,
+      final Continuation<? super Unit> $completion) {
+    return CoroutinesRoom.execute(__db, true, new Callable<Unit>() {
+      @Override
+      @NonNull
+      public Unit call() throws Exception {
+        final SupportSQLiteStatement _stmt = __preparedStmtOfUpdateMatch.acquire();
+        int _argIndex = 1;
+        _stmt.bindString(_argIndex, name);
+        _argIndex = 2;
+        _stmt.bindString(_argIndex, opponentTeamName);
+        _argIndex = 3;
+        _stmt.bindLong(_argIndex, matchId);
+        try {
+          __db.beginTransaction();
+          try {
+            _stmt.executeUpdateDelete();
+            __db.setTransactionSuccessful();
+            return Unit.INSTANCE;
+          } finally {
+            __db.endTransaction();
+          }
+        } finally {
+          __preparedStmtOfUpdateMatch.release(_stmt);
         }
       }
     }, $completion);
@@ -119,6 +160,7 @@ public final class MatchDao_Impl implements MatchDao {
         try {
           final int _cursorIndexOfId = CursorUtil.getColumnIndexOrThrow(_cursor, "id");
           final int _cursorIndexOfName = CursorUtil.getColumnIndexOrThrow(_cursor, "name");
+          final int _cursorIndexOfOpponentTeamName = CursorUtil.getColumnIndexOrThrow(_cursor, "opponentTeamName");
           final int _cursorIndexOfCreatedAt = CursorUtil.getColumnIndexOrThrow(_cursor, "createdAt");
           final List<MatchEntity> _result = new ArrayList<MatchEntity>(_cursor.getCount());
           while (_cursor.moveToNext()) {
@@ -127,9 +169,11 @@ public final class MatchDao_Impl implements MatchDao {
             _tmpId = _cursor.getLong(_cursorIndexOfId);
             final String _tmpName;
             _tmpName = _cursor.getString(_cursorIndexOfName);
+            final String _tmpOpponentTeamName;
+            _tmpOpponentTeamName = _cursor.getString(_cursorIndexOfOpponentTeamName);
             final long _tmpCreatedAt;
             _tmpCreatedAt = _cursor.getLong(_cursorIndexOfCreatedAt);
-            _item = new MatchEntity(_tmpId,_tmpName,_tmpCreatedAt);
+            _item = new MatchEntity(_tmpId,_tmpName,_tmpOpponentTeamName,_tmpCreatedAt);
             _result.add(_item);
           }
           return _result;

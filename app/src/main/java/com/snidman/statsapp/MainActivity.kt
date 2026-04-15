@@ -89,6 +89,7 @@ class MainActivity : ComponentActivity() {
                             onSelectMatch = viewModel::selectMatch,
                             onSelectSet = viewModel::selectSet,
                             onCreateMatch = viewModel::addMatch,
+                            onUpdateMatch = viewModel::updateMatch,
                             onDeleteSelectedMatch = viewModel::deleteSelectedMatch,
                             onDeleteSelectedSet = viewModel::deleteSelectedSet,
                             onCreatePlayer = viewModel::addPlayer,
@@ -112,7 +113,8 @@ private fun StatCaptureScreen(
     onRecordStat: (Long, String, String) -> Unit,
     onSelectMatch: (Long) -> Unit,
     onSelectSet: (Int?) -> Unit,
-    onCreateMatch: (String) -> Unit,
+    onCreateMatch: (String, String) -> Unit,
+    onUpdateMatch: (Long, String, String) -> Unit,
     onDeleteSelectedMatch: () -> Unit,
     onDeleteSelectedSet: () -> Unit,
     onCreatePlayer: (String, Int) -> Unit,
@@ -147,6 +149,7 @@ private fun StatCaptureScreen(
                     onSelectMatch = onSelectMatch,
                     onSelectSet = onSelectSet,
                     onCreateMatch = onCreateMatch,
+                    onUpdateMatch = onUpdateMatch,
                     onDeleteSelectedMatch = onDeleteSelectedMatch,
                     onDeleteSelectedSet = onDeleteSelectedSet,
                     onExportCsv = onExportCsv
@@ -232,15 +235,30 @@ private fun FilterAndActionsCard(
     selectedSetDeleteCount: Int,
     onSelectMatch: (Long) -> Unit,
     onSelectSet: (Int?) -> Unit,
-    onCreateMatch: (String) -> Unit,
+    onCreateMatch: (String, String) -> Unit,
+    onUpdateMatch: (Long, String, String) -> Unit,
     onDeleteSelectedMatch: () -> Unit,
     onDeleteSelectedSet: () -> Unit,
     onExportCsv: () -> Unit
 ) {
     var matchName by remember { mutableStateOf("") }
+    var opponentTeamName by remember { mutableStateOf("") }
+    var showEditMatchDialog by remember { mutableStateOf(false) }
     var showDeleteMatchDialog by remember { mutableStateOf(false) }
     var showDeleteSetDialog by remember { mutableStateOf(false) }
-    val selectedMatchName = matches.firstOrNull { it.id == selectedMatchId }?.name ?: "this match"
+    val selectedMatch = matches.firstOrNull { it.id == selectedMatchId }
+    val selectedMatchName = selectedMatch?.name ?: "this match"
+
+    if (showEditMatchDialog && selectedMatch != null) {
+        EditMatchDialog(
+            match = selectedMatch,
+            onSave = { name, opponent ->
+                onUpdateMatch(selectedMatch.id, name, opponent)
+                showEditMatchDialog = false
+            },
+            onDismiss = { showEditMatchDialog = false }
+        )
+    }
 
     if (showDeleteMatchDialog) {
         ConfirmDeleteDialog(
@@ -279,28 +297,56 @@ private fun FilterAndActionsCard(
                 matches.forEach { match ->
                     val selected = match.id == selectedMatchId
                     Button(onClick = { onSelectMatch(match.id) }) {
-                        Text(if (selected) "${match.name} *" else match.name)
+                        val label = if (match.opponentTeamName.isBlank()) {
+                            match.name
+                        } else {
+                            "${match.name} vs ${match.opponentTeamName}"
+                        }
+                        Text(if (selected) "$label *" else label)
                     }
                 }
             }
 
+            OutlinedTextField(
+                modifier = Modifier.fillMaxWidth(),
+                value = matchName,
+                onValueChange = { matchName = it },
+                label = { Text("New match name") },
+                singleLine = true
+            )
+            OutlinedTextField(
+                modifier = Modifier.fillMaxWidth(),
+                value = opponentTeamName,
+                onValueChange = { opponentTeamName = it },
+                label = { Text("Opposing team name") },
+                singleLine = true
+            )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    modifier = Modifier.weight(1f),
-                    value = matchName,
-                    onValueChange = { matchName = it },
-                    label = { Text("New match name") },
-                    singleLine = true
-                )
                 Button(onClick = {
                     val trimmed = matchName.trim()
                     if (trimmed.isNotEmpty()) {
-                        onCreateMatch(trimmed)
+                        onCreateMatch(trimmed, opponentTeamName.trim())
                         matchName = ""
+                        opponentTeamName = ""
                     }
                 }) {
-                    Text("Add")
+                    Text("Add Match")
                 }
+                OutlinedTextField(
+                    modifier = Modifier.weight(1f),
+                    value = selectedMatch?.opponentTeamName ?: "",
+                    onValueChange = {},
+                    label = { Text("Selected opponent") },
+                    enabled = false,
+                    singleLine = true
+                )
+            }
+
+            Button(
+                enabled = selectedMatch != null,
+                onClick = { showEditMatchDialog = true }
+            ) {
+                Text("Edit Selected Match")
             }
 
             Text("Set", style = MaterialTheme.typography.titleMedium)
@@ -350,6 +396,54 @@ private fun FilterAndActionsCard(
             }
         }
     }
+}
+
+@Composable
+private fun EditMatchDialog(
+    match: MatchEntity,
+    onSave: (String, String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var matchName by remember(match.id) { mutableStateOf(match.name) }
+    var opponentName by remember(match.id) { mutableStateOf(match.opponentTeamName) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit Match") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    modifier = Modifier.fillMaxWidth(),
+                    value = matchName,
+                    onValueChange = { matchName = it },
+                    label = { Text("Match name") },
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    modifier = Modifier.fillMaxWidth(),
+                    value = opponentName,
+                    onValueChange = { opponentName = it },
+                    label = { Text("Opposing team name") },
+                    singleLine = true
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                val trimmed = matchName.trim()
+                if (trimmed.isNotEmpty()) {
+                    onSave(trimmed, opponentName.trim())
+                }
+            }) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }
 
 @Composable
@@ -927,7 +1021,8 @@ private fun StatCaptureScreenPreview() {
             onRecordStat = { _, _, _ -> },
             onSelectMatch = {},
             onSelectSet = {},
-            onCreateMatch = {},
+            onCreateMatch = { _, _ -> },
+            onUpdateMatch = { _, _, _ -> },
             onDeleteSelectedMatch = {},
             onDeleteSelectedSet = {},
             onCreatePlayer = { _, _ -> },

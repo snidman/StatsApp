@@ -38,17 +38,17 @@ public final class AppDatabase_Impl extends AppDatabase {
   @Override
   @NonNull
   protected SupportSQLiteOpenHelper createOpenHelper(@NonNull final DatabaseConfiguration config) {
-    final SupportSQLiteOpenHelper.Callback _openCallback = new RoomOpenHelper(config, new RoomOpenHelper.Delegate(2) {
+    final SupportSQLiteOpenHelper.Callback _openCallback = new RoomOpenHelper(config, new RoomOpenHelper.Delegate(3) {
       @Override
       public void createAllTables(@NonNull final SupportSQLiteDatabase db) {
         db.execSQL("CREATE TABLE IF NOT EXISTS `players` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `jerseyNumber` INTEGER NOT NULL, `teamId` INTEGER)");
         db.execSQL("CREATE TABLE IF NOT EXISTS `teams` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL)");
-        db.execSQL("CREATE TABLE IF NOT EXISTS `matches` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `createdAt` INTEGER NOT NULL)");
+        db.execSQL("CREATE TABLE IF NOT EXISTS `matches` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `opponentTeamName` TEXT NOT NULL, `createdAt` INTEGER NOT NULL)");
         db.execSQL("CREATE TABLE IF NOT EXISTS `stat_events` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `playerId` INTEGER NOT NULL, `matchId` INTEGER NOT NULL, `setNumber` INTEGER NOT NULL, `skill` TEXT NOT NULL, `outcome` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, FOREIGN KEY(`playerId`) REFERENCES `players`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`matchId`) REFERENCES `matches`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )");
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_stat_events_playerId` ON `stat_events` (`playerId`)");
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_stat_events_matchId` ON `stat_events` (`matchId`)");
         db.execSQL("CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)");
-        db.execSQL("INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'e7fabb2fff6d45f717d00f347c063076')");
+        db.execSQL("INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'b762df26c74d83ccf27138d31849d04c')");
       }
 
       @Override
@@ -127,9 +127,10 @@ public final class AppDatabase_Impl extends AppDatabase {
                   + " Expected:\n" + _infoTeams + "\n"
                   + " Found:\n" + _existingTeams);
         }
-        final HashMap<String, TableInfo.Column> _columnsMatches = new HashMap<String, TableInfo.Column>(3);
+        final HashMap<String, TableInfo.Column> _columnsMatches = new HashMap<String, TableInfo.Column>(4);
         _columnsMatches.put("id", new TableInfo.Column("id", "INTEGER", true, 1, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsMatches.put("name", new TableInfo.Column("name", "TEXT", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsMatches.put("opponentTeamName", new TableInfo.Column("opponentTeamName", "TEXT", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsMatches.put("createdAt", new TableInfo.Column("createdAt", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
         final HashSet<TableInfo.ForeignKey> _foreignKeysMatches = new HashSet<TableInfo.ForeignKey>(0);
         final HashSet<TableInfo.Index> _indicesMatches = new HashSet<TableInfo.Index>(0);
@@ -163,7 +164,7 @@ public final class AppDatabase_Impl extends AppDatabase {
         }
         return new RoomOpenHelper.ValidationResult(true, null);
       }
-    }, "e7fabb2fff6d45f717d00f347c063076", "8ad09048dbf8b5329f6c0e7a50bcfbfa");
+    }, "b762df26c74d83ccf27138d31849d04c", "bdceed02aeba4ea000e5e4045ff91013");
     final SupportSQLiteOpenHelper.Configuration _sqliteConfig = SupportSQLiteOpenHelper.Configuration.builder(config.context).name(config.name).callback(_openCallback).build();
     final SupportSQLiteOpenHelper _helper = config.sqliteOpenHelperFactory.create(_sqliteConfig);
     return _helper;

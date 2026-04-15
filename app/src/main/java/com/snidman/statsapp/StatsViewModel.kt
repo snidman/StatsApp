@@ -235,10 +235,20 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun addMatch(name: String) {
+    fun addMatch(name: String, opponentTeamName: String) {
+        val trimmedName = name.trim()
+        if (trimmedName.isEmpty()) return
         viewModelScope.launch {
-            val newMatchId = repository.addMatch(name)
+            val newMatchId = repository.addMatch(trimmedName, opponentTeamName.trim())
             selectedMatchIdFlow.value = newMatchId
+        }
+    }
+
+    fun updateMatch(matchId: Long, name: String, opponentTeamName: String) {
+        val trimmedName = name.trim()
+        if (trimmedName.isEmpty()) return
+        viewModelScope.launch {
+            repository.updateMatch(matchId, trimmedName, opponentTeamName.trim())
         }
     }
 
