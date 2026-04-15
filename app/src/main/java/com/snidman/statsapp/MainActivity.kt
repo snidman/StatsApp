@@ -117,8 +117,8 @@ private fun StatCaptureScreen(
     onRecordStat: (Long, String, String) -> Unit,
     onSelectMatch: (Long) -> Unit,
     onSelectSet: (Int?) -> Unit,
-    onCreateMatch: (String, String) -> Unit,
-    onUpdateMatch: (Long, String, String) -> Unit,
+    onCreateMatch: (String, Long, String) -> Unit,
+    onUpdateMatch: (Long, String, Long, String) -> Unit,
     onDeleteSelectedMatch: () -> Unit,
     onDeleteSelectedSet: () -> Unit,
     onSaveSetLineup: (SetRotationLineupState) -> Unit,
@@ -150,7 +150,9 @@ private fun StatCaptureScreen(
                     totalEvents = state.filteredEvents.size,
                     selectedMatchDeleteCount = state.selectedMatchDeleteEventCount,
                     selectedSetDeleteCount = state.selectedSetDeleteEventCount,
-                    players = state.allPlayers,
+                    teams = state.teams,
+                    players = state.players.map { it.player },
+                    selectedMatchTeamId = state.selectedMatchTeamId,
                     selectedSetLineup = state.selectedSetLineup,
                     onSelectMatch = onSelectMatch,
                     onSelectSet = onSelectSet,
@@ -174,7 +176,7 @@ private fun StatCaptureScreen(
                     ) {
                         Text("Teams and player profiles")
                         Button(onClick = onOpenTeamManager) {
-                            Text("Manage")
+                            Text("Manage Teams & Players")
                         }
                     }
                 }
@@ -213,14 +215,14 @@ private fun StatCaptureScreen(
 
             if (state.players.isEmpty()) {
                 item {
-                    Text("No players yet. Add one above.")
+                    Text("No players for this match. Select a team on the match first, then add players to that team in Team & Player Manager.")
                 }
             }
 
             item {
                 EventFeedCard(
                     state = state,
-                    players = state.players.map { it.player }
+                    players = state.allPlayers
                 )
             }
         }
@@ -236,12 +238,14 @@ private fun FilterAndActionsCard(
     totalEvents: Int,
     selectedMatchDeleteCount: Int,
     selectedSetDeleteCount: Int,
+    teams: List<TeamRosterState>,
     players: List<PlayerEntity>,
+    selectedMatchTeamId: Long?,
     selectedSetLineup: SetRotationLineupState?,
     onSelectMatch: (Long) -> Unit,
     onSelectSet: (Int?) -> Unit,
-    onCreateMatch: (String, String) -> Unit,
-    onUpdateMatch: (Long, String, String) -> Unit,
+    onCreateMatch: (String, Long, String) -> Unit,
+    onUpdateMatch: (Long, String, Long, String) -> Unit,
     onDeleteSelectedMatch: () -> Unit,
     onDeleteSelectedSet: () -> Unit,
     onSaveSetLineup: (SetRotationLineupState) -> Unit,
@@ -249,18 +253,21 @@ private fun FilterAndActionsCard(
 ) {
     var matchName by remember { mutableStateOf("") }
     var opponentTeamName by remember { mutableStateOf("") }
+    var createMatchTeamId by remember(teams) { mutableStateOf(teams.firstOrNull()?.team?.id) }
     var showEditMatchDialog by remember { mutableStateOf(false) }
     var showDeleteMatchDialog by remember { mutableStateOf(false) }
     var showDeleteSetDialog by remember { mutableStateOf(false) }
     var showEditLineupDialog by remember { mutableStateOf(false) }
+    val teamNameById = teams.associate { it.team.id to it.team.name }
     val selectedMatch = matches.firstOrNull { it.id == selectedMatchId }
     val selectedMatchName = selectedMatch?.name ?: "this match"
 
     if (showEditMatchDialog && selectedMatch != null) {
         EditMatchDialog(
             match = selectedMatch,
-            onSave = { name, opponent ->
-                onUpdateMatch(selectedMatch.id, name, opponent)
+            teams = teams,
+            onSave = { name, teamId, opponent ->
+                onUpdateMatch(selectedMatch.id, name, teamId, opponent)
                 showEditMatchDialog = false
             },
             onDismiss = { showEditMatchDialog = false }
@@ -318,10 +325,19 @@ private fun FilterAndActionsCard(
                 matches.forEach { match ->
                     val selected = match.id == selectedMatchId
                     Button(onClick = { onSelectMatch(match.id) }) {
+                        val ownTeamLabel = teamNameById[match.teamId]
                         val label = if (match.opponentTeamName.isBlank()) {
-                            match.name
+                            if (ownTeamLabel.isNullOrBlank()) {
+                                match.name
+                            } else {
+                                "${match.name} (${ownTeamLabel})"
+                            }
                         } else {
-                            "${match.name} vs ${match.opponentTeamName}"
+                            if (ownTeamLabel.isNullOrBlank()) {
+                                "${match.name} vs ${match.opponentTeamName}"
+                            } else {
+                                "${match.name} (${ownTeamLabel}) vs ${match.opponentTeamName}"
+                            }
                         }
                         Text(if (selected) "$label *" else label)
                     }
@@ -349,11 +365,25 @@ private fun FilterAndActionsCard(
                 label = { Text("Opposing team name") },
                 singleLine = true
             )
+            Text("Team playing this match", style = MaterialTheme.typography.titleMedium)
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                teams.forEach { roster ->
+                    val team = roster.team
+                    val selected = createMatchTeamId == team.id
+                    Button(onClick = { createMatchTeamId = team.id }) {
+                        Text(if (selected) "${team.name} *" else team.name)
+                    }
+                }
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Button(onClick = {
                     val trimmed = matchName.trim()
-                    if (trimmed.isNotEmpty()) {
-                        onCreateMatch(trimmed, opponentTeamName.trim())
+                    val teamId = createMatchTeamId
+                    if (trimmed.isNotEmpty() && teamId != null) {
+                        onCreateMatch(trimmed, teamId, opponentTeamName.trim())
                         matchName = ""
                         opponentTeamName = ""
                     }
@@ -369,6 +399,14 @@ private fun FilterAndActionsCard(
                     singleLine = true
                 )
             }
+            OutlinedTextField(
+                modifier = Modifier.fillMaxWidth(),
+                value = selectedMatchTeamId?.let { teamNameById[it] } ?: "",
+                onValueChange = {},
+                label = { Text("Selected team") },
+                enabled = false,
+                singleLine = true
+            )
 
             Button(
                 enabled = selectedMatch != null,
@@ -426,14 +464,19 @@ private fun FilterAndActionsCard(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun EditMatchDialog(
     match: MatchEntity,
-    onSave: (String, String) -> Unit,
+    teams: List<TeamRosterState>,
+    onSave: (String, Long, String) -> Unit,
     onDismiss: () -> Unit
 ) {
     var matchName by remember(match.id) { mutableStateOf(match.name) }
     var opponentName by remember(match.id) { mutableStateOf(match.opponentTeamName) }
+    var selectedTeamId by remember(match.id, teams) {
+        mutableStateOf(match.teamId ?: teams.firstOrNull()?.team?.id)
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -454,13 +497,27 @@ private fun EditMatchDialog(
                     label = { Text("Opposing team name") },
                     singleLine = true
                 )
+                Text("Team playing this match", style = MaterialTheme.typography.titleMedium)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    teams.forEach { roster ->
+                        val team = roster.team
+                        val selected = selectedTeamId == team.id
+                        Button(onClick = { selectedTeamId = team.id }) {
+                            Text(if (selected) "${team.name} *" else team.name)
+                        }
+                    }
+                }
             }
         },
         confirmButton = {
             Button(onClick = {
                 val trimmed = matchName.trim()
-                if (trimmed.isNotEmpty()) {
-                    onSave(trimmed, opponentName.trim())
+                val teamId = selectedTeamId
+                if (trimmed.isNotEmpty() && teamId != null) {
+                    onSave(trimmed, teamId, opponentName.trim())
                 }
             }) {
                 Text("Save")
@@ -1304,8 +1361,8 @@ private fun StatCaptureScreenPreview() {
             onRecordStat = { _, _, _ -> },
             onSelectMatch = {},
             onSelectSet = {},
-            onCreateMatch = { _, _ -> },
-            onUpdateMatch = { _, _, _ -> },
+            onCreateMatch = { _, _, _ -> },
+            onUpdateMatch = { _, _, _, _ -> },
             onDeleteSelectedMatch = {},
             onDeleteSelectedSet = {},
             onSaveSetLineup = {},

@@ -23,6 +23,7 @@ data class TeamEntity(
 data class MatchEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
+    val teamId: Long? = null,
     val opponentTeamName: String,
     val createdAt: Long
 )

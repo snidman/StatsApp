@@ -65,6 +65,7 @@ data class StatsUiState(
     val teams: List<TeamRosterState> = emptyList(),
     val matches: List<MatchEntity> = emptyList(),
     val selectedMatchId: Long? = null,
+    val selectedMatchTeamId: Long? = null,
     val selectedSet: Int? = null,
     val filteredEvents: List<StatEventEntity> = emptyList(),
     val selectedMatchDeleteEventCount: Int = 0,
@@ -191,8 +192,11 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
         val teams = staticData.teams
         val matches = staticData.matches
         val effectiveMatchId = selectedMatchId ?: matches.firstOrNull()?.id
+        val selectedMatch = matches.firstOrNull { it.id == effectiveMatchId }
+        val selectedMatchTeamId = selectedMatch?.teamId
+        val matchPlayers = players.filter { it.teamId == selectedMatchTeamId }
 
-        val playerCards = players.map { player ->
+        val playerCards = matchPlayers.map { player ->
             val playerEvents = events.filter { it.playerId == player.id }
             PlayerCardState(
                 player = player,
@@ -220,6 +224,7 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
             teams = teamRosters,
             matches = matches,
             selectedMatchId = effectiveMatchId,
+            selectedMatchTeamId = selectedMatchTeamId,
             selectedSet = selectedSet,
             filteredEvents = events,
             selectedSetLineup = selectedSetLineup
@@ -288,20 +293,20 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun addMatch(name: String, opponentTeamName: String) {
+    fun addMatch(name: String, teamId: Long, opponentTeamName: String) {
         val trimmedName = name.trim()
         if (trimmedName.isEmpty()) return
         viewModelScope.launch {
-            val newMatchId = repository.addMatch(trimmedName, opponentTeamName.trim())
+            val newMatchId = repository.addMatch(trimmedName, teamId, opponentTeamName.trim())
             selectedMatchIdFlow.value = newMatchId
         }
     }
 
-    fun updateMatch(matchId: Long, name: String, opponentTeamName: String) {
+    fun updateMatch(matchId: Long, name: String, teamId: Long, opponentTeamName: String) {
         val trimmedName = name.trim()
         if (trimmedName.isEmpty()) return
         viewModelScope.launch {
-            repository.updateMatch(matchId, trimmedName, opponentTeamName.trim())
+            repository.updateMatch(matchId, trimmedName, teamId, opponentTeamName.trim())
         }
     }
 
@@ -350,7 +355,11 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
         val selectedSet = selectedSetFlow.value ?: return
         if (lineup.matchId != selectedMatchId || lineup.setNumber != selectedSet) return
 
-        val validPlayerIds = playersFlow.value.map { it.id }.toSet()
+        val selectedMatchTeamId = matchesFlow.value.firstOrNull { it.id == selectedMatchId }?.teamId
+        val validPlayerIds = playersFlow.value
+            .filter { it.teamId == selectedMatchTeamId }
+            .map { it.id }
+            .toSet()
         val normalizedPositions = (1..6).map { position ->
             val slot = lineup.positions.firstOrNull { it.position == position }
                 ?: RotationPositionLineup(position = position)
@@ -431,7 +440,7 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
         val state = uiState.value
         val selectedMatchId = state.selectedMatchId
         val selectedMatchName = state.matches.firstOrNull { it.id == selectedMatchId }?.name ?: "Unknown"
-        val playerLookup = state.players.associate { it.player.id to it.player }
+        val playerLookup = state.allPlayers.associateBy { it.id }
         val rows = mutableListOf<String>()
         rows += "player_name,jersey_number,match,set,skill,outcome,timestamp"
 

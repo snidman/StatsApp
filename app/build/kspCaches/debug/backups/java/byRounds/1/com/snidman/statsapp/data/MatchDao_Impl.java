@@ -45,7 +45,7 @@ public final class MatchDao_Impl implements MatchDao {
       @Override
       @NonNull
       protected String createQuery() {
-        return "INSERT OR REPLACE INTO `matches` (`id`,`name`,`opponentTeamName`,`createdAt`) VALUES (nullif(?, 0),?,?,?)";
+        return "INSERT OR REPLACE INTO `matches` (`id`,`name`,`teamId`,`opponentTeamName`,`createdAt`) VALUES (nullif(?, 0),?,?,?,?)";
       }
 
       @Override
@@ -53,15 +53,20 @@ public final class MatchDao_Impl implements MatchDao {
           @NonNull final MatchEntity entity) {
         statement.bindLong(1, entity.getId());
         statement.bindString(2, entity.getName());
-        statement.bindString(3, entity.getOpponentTeamName());
-        statement.bindLong(4, entity.getCreatedAt());
+        if (entity.getTeamId() == null) {
+          statement.bindNull(3);
+        } else {
+          statement.bindLong(3, entity.getTeamId());
+        }
+        statement.bindString(4, entity.getOpponentTeamName());
+        statement.bindLong(5, entity.getCreatedAt());
       }
     };
     this.__preparedStmtOfUpdateMatch = new SharedSQLiteStatement(__db) {
       @Override
       @NonNull
       public String createQuery() {
-        final String _query = "UPDATE matches SET name = ?, opponentTeamName = ? WHERE id = ?";
+        final String _query = "UPDATE matches SET name = ?, teamId = ?, opponentTeamName = ? WHERE id = ?";
         return _query;
       }
     };
@@ -94,8 +99,8 @@ public final class MatchDao_Impl implements MatchDao {
   }
 
   @Override
-  public Object updateMatch(final long matchId, final String name, final String opponentTeamName,
-      final Continuation<? super Unit> $completion) {
+  public Object updateMatch(final long matchId, final String name, final Long teamId,
+      final String opponentTeamName, final Continuation<? super Unit> $completion) {
     return CoroutinesRoom.execute(__db, true, new Callable<Unit>() {
       @Override
       @NonNull
@@ -104,8 +109,14 @@ public final class MatchDao_Impl implements MatchDao {
         int _argIndex = 1;
         _stmt.bindString(_argIndex, name);
         _argIndex = 2;
-        _stmt.bindString(_argIndex, opponentTeamName);
+        if (teamId == null) {
+          _stmt.bindNull(_argIndex);
+        } else {
+          _stmt.bindLong(_argIndex, teamId);
+        }
         _argIndex = 3;
+        _stmt.bindString(_argIndex, opponentTeamName);
+        _argIndex = 4;
         _stmt.bindLong(_argIndex, matchId);
         try {
           __db.beginTransaction();
@@ -160,6 +171,7 @@ public final class MatchDao_Impl implements MatchDao {
         try {
           final int _cursorIndexOfId = CursorUtil.getColumnIndexOrThrow(_cursor, "id");
           final int _cursorIndexOfName = CursorUtil.getColumnIndexOrThrow(_cursor, "name");
+          final int _cursorIndexOfTeamId = CursorUtil.getColumnIndexOrThrow(_cursor, "teamId");
           final int _cursorIndexOfOpponentTeamName = CursorUtil.getColumnIndexOrThrow(_cursor, "opponentTeamName");
           final int _cursorIndexOfCreatedAt = CursorUtil.getColumnIndexOrThrow(_cursor, "createdAt");
           final List<MatchEntity> _result = new ArrayList<MatchEntity>(_cursor.getCount());
@@ -169,11 +181,17 @@ public final class MatchDao_Impl implements MatchDao {
             _tmpId = _cursor.getLong(_cursorIndexOfId);
             final String _tmpName;
             _tmpName = _cursor.getString(_cursorIndexOfName);
+            final Long _tmpTeamId;
+            if (_cursor.isNull(_cursorIndexOfTeamId)) {
+              _tmpTeamId = null;
+            } else {
+              _tmpTeamId = _cursor.getLong(_cursorIndexOfTeamId);
+            }
             final String _tmpOpponentTeamName;
             _tmpOpponentTeamName = _cursor.getString(_cursorIndexOfOpponentTeamName);
             final long _tmpCreatedAt;
             _tmpCreatedAt = _cursor.getLong(_cursorIndexOfCreatedAt);
-            _item = new MatchEntity(_tmpId,_tmpName,_tmpOpponentTeamName,_tmpCreatedAt);
+            _item = new MatchEntity(_tmpId,_tmpName,_tmpTeamId,_tmpOpponentTeamName,_tmpCreatedAt);
             _result.add(_item);
           }
           return _result;

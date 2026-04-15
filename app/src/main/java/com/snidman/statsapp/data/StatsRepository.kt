@@ -70,18 +70,19 @@ class StatsRepository(private val db: AppDatabase) {
         }
     }
 
-    suspend fun addMatch(name: String, opponentTeamName: String): Long {
+    suspend fun addMatch(name: String, teamId: Long?, opponentTeamName: String): Long {
         return db.matchDao().insertMatch(
             MatchEntity(
                 name = name,
+                teamId = teamId,
                 opponentTeamName = opponentTeamName,
                 createdAt = System.currentTimeMillis()
             )
         )
     }
 
-    suspend fun updateMatch(matchId: Long, name: String, opponentTeamName: String) {
-        db.matchDao().updateMatch(matchId, name, opponentTeamName)
+    suspend fun updateMatch(matchId: Long, name: String, teamId: Long?, opponentTeamName: String) {
+        db.matchDao().updateMatch(matchId, name, teamId, opponentTeamName)
     }
 
     suspend fun deleteMatch(matchId: Long) {
@@ -123,7 +124,7 @@ class StatsRepository(private val db: AppDatabase) {
 
         if (db.matchDao().matchCount() == 0) {
             db.matchDao().insertMatch(
-                MatchEntity(name = "Match 1", opponentTeamName = "", createdAt = System.currentTimeMillis())
+                MatchEntity(name = "Match 1", teamId = null, opponentTeamName = "", createdAt = System.currentTimeMillis())
             )
         }
     }
