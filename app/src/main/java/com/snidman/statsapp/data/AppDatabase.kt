@@ -8,8 +8,15 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [PlayerEntity::class, TeamEntity::class, MatchEntity::class, StatEventEntity::class],
-    version = 3,
+    entities = [
+        PlayerEntity::class,
+        TeamEntity::class,
+        MatchEntity::class,
+        StatEventEntity::class,
+        SetLineupEntity::class,
+        SetPlayerRoleEntity::class
+    ],
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -17,6 +24,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun teamDao(): TeamDao
     abstract fun matchDao(): MatchDao
     abstract fun statEventDao(): StatEventDao
+    abstract fun setLineupDao(): SetLineupDao
 
     companion object {
         private val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -39,6 +47,43 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS set_lineups (
+                        matchId INTEGER NOT NULL,
+                        setNumber INTEGER NOT NULL,
+                        position INTEGER NOT NULL,
+                        frontPlayerId INTEGER,
+                        backPlayerId INTEGER,
+                        servingPlayerId INTEGER,
+                        PRIMARY KEY(matchId, setNumber, position),
+                        FOREIGN KEY(matchId) REFERENCES matches(id) ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_set_lineups_matchId ON set_lineups(matchId)")
+
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS set_player_roles (
+                        matchId INTEGER NOT NULL,
+                        setNumber INTEGER NOT NULL,
+                        playerId INTEGER NOT NULL,
+                        isLibero INTEGER NOT NULL,
+                        isSetter INTEGER NOT NULL,
+                        PRIMARY KEY(matchId, setNumber, playerId),
+                        FOREIGN KEY(matchId) REFERENCES matches(id) ON DELETE CASCADE,
+                        FOREIGN KEY(playerId) REFERENCES players(id) ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_set_player_roles_matchId ON set_player_roles(matchId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_set_player_roles_playerId ON set_player_roles(playerId)")
+            }
+        }
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
@@ -51,6 +96,7 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                     .addMigrations(MIGRATION_1_2)
                     .addMigrations(MIGRATION_2_3)
+                    .addMigrations(MIGRATION_3_4)
                     .build()
                     .also { INSTANCE = it }
             }

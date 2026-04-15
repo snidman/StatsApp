@@ -24,6 +24,14 @@ class StatsRepository(private val db: AppDatabase) {
         return db.statEventDao().getEventCountForPlayerFlow(playerId)
     }
 
+    fun getSetLineupsFlow(matchId: Long, setNumber: Int): Flow<List<SetLineupEntity>> {
+        return db.setLineupDao().getSetLineupsFlow(matchId, setNumber)
+    }
+
+    fun getSetPlayerRolesFlow(matchId: Long, setNumber: Int): Flow<List<SetPlayerRoleEntity>> {
+        return db.setLineupDao().getSetPlayerRolesFlow(matchId, setNumber)
+    }
+
     suspend fun insertEvent(event: StatEventEntity) {
         db.statEventDao().insertEvent(event)
     }
@@ -82,6 +90,25 @@ class StatsRepository(private val db: AppDatabase) {
 
     suspend fun deleteSetEvents(matchId: Long, setNumber: Int) {
         db.statEventDao().deleteSetEvents(matchId, setNumber)
+    }
+
+    suspend fun saveSetLineup(
+        matchId: Long,
+        setNumber: Int,
+        lineups: List<SetLineupEntity>,
+        roles: List<SetPlayerRoleEntity>
+    ) {
+        db.withTransaction {
+            db.setLineupDao().deleteSetLineups(matchId, setNumber)
+            db.setLineupDao().deleteSetPlayerRoles(matchId, setNumber)
+
+            if (lineups.isNotEmpty()) {
+                db.setLineupDao().upsertSetLineups(lineups)
+            }
+            if (roles.isNotEmpty()) {
+                db.setLineupDao().upsertSetPlayerRoles(roles)
+            }
+        }
     }
 
     suspend fun ensureSeedData() {

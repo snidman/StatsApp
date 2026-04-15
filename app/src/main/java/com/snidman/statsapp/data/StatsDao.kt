@@ -93,3 +93,36 @@ interface StatEventDao {
     @Query("DELETE FROM stat_events WHERE matchId = :matchId AND setNumber = :setNumber")
     suspend fun deleteSetEvents(matchId: Long, setNumber: Int)
 }
+
+@Dao
+interface SetLineupDao {
+    @Query(
+        """
+        SELECT * FROM set_lineups
+        WHERE matchId = :matchId AND setNumber = :setNumber
+        ORDER BY position ASC
+        """
+    )
+    fun getSetLineupsFlow(matchId: Long, setNumber: Int): Flow<List<SetLineupEntity>>
+
+    @Query(
+        """
+        SELECT * FROM set_player_roles
+        WHERE matchId = :matchId AND setNumber = :setNumber
+        ORDER BY playerId ASC
+        """
+    )
+    fun getSetPlayerRolesFlow(matchId: Long, setNumber: Int): Flow<List<SetPlayerRoleEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertSetLineups(lineups: List<SetLineupEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertSetPlayerRoles(roles: List<SetPlayerRoleEntity>)
+
+    @Query("DELETE FROM set_lineups WHERE matchId = :matchId AND setNumber = :setNumber")
+    suspend fun deleteSetLineups(matchId: Long, setNumber: Int)
+
+    @Query("DELETE FROM set_player_roles WHERE matchId = :matchId AND setNumber = :setNumber")
+    suspend fun deleteSetPlayerRoles(matchId: Long, setNumber: Int)
+}

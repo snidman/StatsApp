@@ -14,8 +14,11 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
@@ -92,6 +95,7 @@ class MainActivity : ComponentActivity() {
                             onUpdateMatch = viewModel::updateMatch,
                             onDeleteSelectedMatch = viewModel::deleteSelectedMatch,
                             onDeleteSelectedSet = viewModel::deleteSelectedSet,
+                            onSaveSetLineup = viewModel::saveSelectedSetLineup,
                             onCreatePlayer = viewModel::addPlayer,
                             onDeletePlayer = viewModel::deletePlayer,
                             onOpenTeamManager = { showingManagementScreen = true },
@@ -117,6 +121,7 @@ private fun StatCaptureScreen(
     onUpdateMatch: (Long, String, String) -> Unit,
     onDeleteSelectedMatch: () -> Unit,
     onDeleteSelectedSet: () -> Unit,
+    onSaveSetLineup: (SetRotationLineupState) -> Unit,
     onCreatePlayer: (String, Int) -> Unit,
     onDeletePlayer: (Long) -> Unit,
     onOpenTeamManager: () -> Unit,
@@ -146,12 +151,15 @@ private fun StatCaptureScreen(
                     totalEvents = state.filteredEvents.size,
                     selectedMatchDeleteCount = state.selectedMatchDeleteEventCount,
                     selectedSetDeleteCount = state.selectedSetDeleteEventCount,
+                    players = state.allPlayers,
+                    selectedSetLineup = state.selectedSetLineup,
                     onSelectMatch = onSelectMatch,
                     onSelectSet = onSelectSet,
                     onCreateMatch = onCreateMatch,
                     onUpdateMatch = onUpdateMatch,
                     onDeleteSelectedMatch = onDeleteSelectedMatch,
                     onDeleteSelectedSet = onDeleteSelectedSet,
+                    onSaveSetLineup = onSaveSetLineup,
                     onExportCsv = onExportCsv
                 )
             }
@@ -233,12 +241,15 @@ private fun FilterAndActionsCard(
     totalEvents: Int,
     selectedMatchDeleteCount: Int,
     selectedSetDeleteCount: Int,
+    players: List<PlayerEntity>,
+    selectedSetLineup: SetRotationLineupState?,
     onSelectMatch: (Long) -> Unit,
     onSelectSet: (Int?) -> Unit,
     onCreateMatch: (String, String) -> Unit,
     onUpdateMatch: (Long, String, String) -> Unit,
     onDeleteSelectedMatch: () -> Unit,
     onDeleteSelectedSet: () -> Unit,
+    onSaveSetLineup: (SetRotationLineupState) -> Unit,
     onExportCsv: () -> Unit
 ) {
     var matchName by remember { mutableStateOf("") }
@@ -246,6 +257,7 @@ private fun FilterAndActionsCard(
     var showEditMatchDialog by remember { mutableStateOf(false) }
     var showDeleteMatchDialog by remember { mutableStateOf(false) }
     var showDeleteSetDialog by remember { mutableStateOf(false) }
+    var showEditLineupDialog by remember { mutableStateOf(false) }
     val selectedMatch = matches.firstOrNull { it.id == selectedMatchId }
     val selectedMatchName = selectedMatch?.name ?: "this match"
 
@@ -285,6 +297,20 @@ private fun FilterAndActionsCard(
         )
     }
 
+    if (showEditLineupDialog && selectedMatchId != null && selectedSet != null) {
+        RotationLineupDialog(
+            matchId = selectedMatchId,
+            setNumber = selectedSet,
+            players = players,
+            initialLineup = selectedSetLineup,
+            onSave = {
+                onSaveSetLineup(it)
+                showEditLineupDialog = false
+            },
+            onDismiss = { showEditLineupDialog = false }
+        )
+    }
+
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Filters", style = MaterialTheme.typography.titleLarge)
@@ -305,6 +331,13 @@ private fun FilterAndActionsCard(
                         Text(if (selected) "$label *" else label)
                     }
                 }
+            }
+
+            Button(
+                enabled = selectedMatchId != null && selectedSet != null,
+                onClick = { showEditLineupDialog = true }
+            ) {
+                Text("Edit Starting Rotation")
             }
 
             OutlinedTextField(
@@ -441,6 +474,256 @@ private fun EditMatchDialog(
         dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text("Cancel")
+            }
+        }
+    )
+}
+
+private enum class RotationSlotField {
+    FRONT,
+    BACK
+}
+
+private data class RotationPickerTarget(
+    val position: Int,
+    val field: RotationSlotField
+)
+
+@Composable
+private fun RotationLineupDialog(
+    matchId: Long,
+    setNumber: Int,
+    players: List<PlayerEntity>,
+    initialLineup: SetRotationLineupState?,
+    onSave: (SetRotationLineupState) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val sortedPlayers = players.sortedWith(compareBy(PlayerEntity::jerseyNumber, PlayerEntity::name))
+    val playerNameById = sortedPlayers.associate { it.id to "${it.name} #${it.jerseyNumber}" }
+
+    var positions by remember(matchId, setNumber, initialLineup, players) {
+        val existingByPosition = initialLineup?.positions?.associateBy { it.position }.orEmpty()
+        mutableStateOf(
+            (1..6).map { position ->
+                existingByPosition[position] ?: RotationPositionLineup(position = position)
+            }
+        )
+    }
+    var liberoIds by remember(matchId, setNumber, initialLineup, players) {
+        mutableStateOf(initialLineup?.liberoPlayerIds?.filter { it in playerNameById }?.toSet().orEmpty())
+    }
+    var setterIds by remember(matchId, setNumber, initialLineup, players) {
+        mutableStateOf(initialLineup?.setterPlayerIds?.filter { it in playerNameById }?.toSet().orEmpty())
+    }
+    var pickerTarget by remember { mutableStateOf<RotationPickerTarget?>(null) }
+
+    fun normalizeServing(slot: RotationPositionLineup): RotationPositionLineup {
+        val servingPlayerId = when {
+            slot.frontPlayerId != null && slot.backPlayerId != null -> {
+                slot.servingPlayerId?.takeIf { it == slot.frontPlayerId || it == slot.backPlayerId }
+                    ?: slot.frontPlayerId
+            }
+
+            slot.frontPlayerId != null -> slot.frontPlayerId
+            slot.backPlayerId != null -> slot.backPlayerId
+            else -> null
+        }
+        return slot.copy(servingPlayerId = servingPlayerId)
+    }
+
+    pickerTarget?.let { target ->
+        val currentSlot = positions.firstOrNull { it.position == target.position }
+        val currentSelectedPlayerId = when (target.field) {
+            RotationSlotField.FRONT -> currentSlot?.frontPlayerId
+            RotationSlotField.BACK -> currentSlot?.backPlayerId
+        }
+        PlayerSelectionDialog(
+            title = "Set $setNumber - Position ${target.position}",
+            selectedPlayerId = currentSelectedPlayerId,
+            players = sortedPlayers,
+            onSelect = { selectedId ->
+                positions = positions.map { slot ->
+                    if (slot.position != target.position) {
+                        slot
+                    } else {
+                        val updated = when (target.field) {
+                            RotationSlotField.FRONT -> slot.copy(frontPlayerId = selectedId)
+                            RotationSlotField.BACK -> slot.copy(backPlayerId = selectedId)
+                        }
+                        normalizeServing(updated)
+                    }
+                }
+                pickerTarget = null
+            },
+            onDismiss = { pickerTarget = null }
+        )
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Starting Rotation - Set $setNumber") },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 460.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                positions.sortedBy { it.position }.forEach { slot ->
+                    val frontLabel = slot.frontPlayerId?.let { playerNameById[it] } ?: "Select front-row player"
+                    val backLabel = slot.backPlayerId?.let { playerNameById[it] } ?: "Select back-row player"
+                    val servingLabel = slot.servingPlayerId?.let { playerNameById[it] } ?: "None"
+
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Position ${slot.position}", fontWeight = FontWeight.Bold)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    modifier = Modifier.weight(1f),
+                                    onClick = {
+                                        pickerTarget = RotationPickerTarget(slot.position, RotationSlotField.FRONT)
+                                    }
+                                ) {
+                                    Text(frontLabel)
+                                }
+                                Button(
+                                    modifier = Modifier.weight(1f),
+                                    onClick = {
+                                        pickerTarget = RotationPickerTarget(slot.position, RotationSlotField.BACK)
+                                    }
+                                ) {
+                                    Text(backLabel)
+                                }
+                            }
+
+                            if (slot.frontPlayerId != null && slot.backPlayerId != null) {
+                                Text("Serving player")
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    val frontSelected = slot.servingPlayerId == slot.frontPlayerId
+                                    val backSelected = slot.servingPlayerId == slot.backPlayerId
+                                    Button(onClick = {
+                                        positions = positions.map {
+                                            if (it.position == slot.position) it.copy(servingPlayerId = slot.frontPlayerId) else it
+                                        }
+                                    }) {
+                                        Text(if (frontSelected) "Front *" else "Front")
+                                    }
+                                    Button(onClick = {
+                                        positions = positions.map {
+                                            if (it.position == slot.position) it.copy(servingPlayerId = slot.backPlayerId) else it
+                                        }
+                                    }) {
+                                        Text(if (backSelected) "Back *" else "Back")
+                                    }
+                                }
+                            } else {
+                                Text("Serving: $servingLabel", style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                }
+
+                Text("Liberos (up to 2)", style = MaterialTheme.typography.titleMedium)
+                sortedPlayers.forEach { player ->
+                    val checked = player.id in liberoIds
+                    val canCheckMore = checked || liberoIds.size < 2
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = checked,
+                            enabled = canCheckMore,
+                            onCheckedChange = {
+                                liberoIds = if (checked) {
+                                    liberoIds - player.id
+                                } else if (liberoIds.size < 2) {
+                                    liberoIds + player.id
+                                } else {
+                                    liberoIds
+                                }
+                            }
+                        )
+                        Text("${player.name} #${player.jerseyNumber}")
+                    }
+                }
+
+                Text("Setters", style = MaterialTheme.typography.titleMedium)
+                sortedPlayers.forEach { player ->
+                    val checked = player.id in setterIds
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = checked,
+                            onCheckedChange = {
+                                setterIds = if (checked) {
+                                    setterIds - player.id
+                                } else {
+                                    setterIds + player.id
+                                }
+                            }
+                        )
+                        Text("${player.name} #${player.jerseyNumber}")
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                onSave(
+                    SetRotationLineupState(
+                        matchId = matchId,
+                        setNumber = setNumber,
+                        positions = positions.map(::normalizeServing),
+                        liberoPlayerIds = liberoIds,
+                        setterPlayerIds = setterIds
+                    )
+                )
+            }) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+@Composable
+private fun PlayerSelectionDialog(
+    title: String,
+    selectedPlayerId: Long?,
+    players: List<PlayerEntity>,
+    onSelect: (Long?) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 360.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(onClick = { onSelect(null) }) {
+                    Text(if (selectedPlayerId == null) "None *" else "None")
+                }
+                players.forEach { player ->
+                    val selected = selectedPlayerId == player.id
+                    Button(onClick = { onSelect(player.id) }) {
+                        Text(if (selected) "${player.name} #${player.jerseyNumber} *" else "${player.name} #${player.jerseyNumber}")
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close")
             }
         }
     )
@@ -1025,6 +1308,7 @@ private fun StatCaptureScreenPreview() {
             onUpdateMatch = { _, _, _ -> },
             onDeleteSelectedMatch = {},
             onDeleteSelectedSet = {},
+            onSaveSetLineup = {},
             onCreatePlayer = { _, _ -> },
             onDeletePlayer = {},
             onOpenTeamManager = {},

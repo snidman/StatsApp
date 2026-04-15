@@ -8,6 +8,8 @@ import androidx.lifecycle.viewModelScope
 import com.snidman.statsapp.data.AppDatabase
 import com.snidman.statsapp.data.MatchEntity
 import com.snidman.statsapp.data.PlayerEntity
+import com.snidman.statsapp.data.SetLineupEntity
+import com.snidman.statsapp.data.SetPlayerRoleEntity
 import com.snidman.statsapp.data.StatEventEntity
 import com.snidman.statsapp.data.StatsRepository
 import com.snidman.statsapp.data.TeamEntity
@@ -16,6 +18,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -41,6 +44,21 @@ data class TeamRosterState(
     val players: List<PlayerEntity>
 )
 
+data class RotationPositionLineup(
+    val position: Int,
+    val frontPlayerId: Long? = null,
+    val backPlayerId: Long? = null,
+    val servingPlayerId: Long? = null
+)
+
+data class SetRotationLineupState(
+    val matchId: Long,
+    val setNumber: Int,
+    val positions: List<RotationPositionLineup>,
+    val liberoPlayerIds: Set<Long> = emptySet(),
+    val setterPlayerIds: Set<Long> = emptySet()
+)
+
 data class StatsUiState(
     val players: List<PlayerCardState> = emptyList(),
     val allPlayers: List<PlayerEntity> = emptyList(),
@@ -52,6 +70,7 @@ data class StatsUiState(
     val selectedMatchDeleteEventCount: Int = 0,
     val selectedSetDeleteEventCount: Int = 0,
     val playerDeleteEventCounts: Map<Long, Int> = emptyMap(),
+    val selectedSetLineup: SetRotationLineupState? = null,
     val lastExportMessage: String? = null
 )
 
@@ -119,6 +138,38 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val selectedSetLineupFlow = combine(selectedMatchIdFlow, selectedSetFlow) { matchId, setNumber ->
+        matchId to setNumber
+    }.flatMapLatest { (matchId, setNumber) ->
+        if (matchId == null || setNumber == null) {
+            flowOf(null)
+        } else {
+            combine(
+                repository.getSetLineupsFlow(matchId, setNumber),
+                repository.getSetPlayerRolesFlow(matchId, setNumber)
+            ) { lineups, roles ->
+                val byPosition = lineups.associateBy { it.position }
+                val positions = (1..6).map { position ->
+                    val slot = byPosition[position]
+                    RotationPositionLineup(
+                        position = position,
+                        frontPlayerId = slot?.frontPlayerId,
+                        backPlayerId = slot?.backPlayerId,
+                        servingPlayerId = slot?.servingPlayerId
+                    )
+                }
+                SetRotationLineupState(
+                    matchId = matchId,
+                    setNumber = setNumber,
+                    positions = positions,
+                    liberoPlayerIds = roles.filter { it.isLibero }.map { it.playerId }.toSet(),
+                    setterPlayerIds = roles.filter { it.isSetter }.map { it.playerId }.toSet()
+                )
+            }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
     private data class StaticData(
         val players: List<PlayerEntity>,
         val teams: List<TeamEntity>,
@@ -133,8 +184,9 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
         staticDataFlow,
         selectedMatchIdFlow,
         selectedSetFlow,
-        eventsFlow
-    ) { staticData, selectedMatchId, selectedSet, events ->
+        eventsFlow,
+        selectedSetLineupFlow
+    ) { staticData, selectedMatchId, selectedSet, events, selectedSetLineup ->
         val players = staticData.players
         val teams = staticData.teams
         val matches = staticData.matches
@@ -169,7 +221,8 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
             matches = matches,
             selectedMatchId = effectiveMatchId,
             selectedSet = selectedSet,
-            filteredEvents = events
+            filteredEvents = events,
+            selectedSetLineup = selectedSetLineup
         )
     }
 
@@ -288,6 +341,67 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
         val setNumber = selectedSetFlow.value ?: return
         viewModelScope.launch {
             repository.deleteSetEvents(matchId, setNumber)
+            repository.saveSetLineup(matchId, setNumber, emptyList(), emptyList())
+        }
+    }
+
+    fun saveSelectedSetLineup(lineup: SetRotationLineupState) {
+        val selectedMatchId = selectedMatchIdFlow.value ?: return
+        val selectedSet = selectedSetFlow.value ?: return
+        if (lineup.matchId != selectedMatchId || lineup.setNumber != selectedSet) return
+
+        val validPlayerIds = playersFlow.value.map { it.id }.toSet()
+        val normalizedPositions = (1..6).map { position ->
+            val slot = lineup.positions.firstOrNull { it.position == position }
+                ?: RotationPositionLineup(position = position)
+            val frontPlayerId = slot.frontPlayerId?.takeIf { it in validPlayerIds }
+            val backPlayerId = slot.backPlayerId?.takeIf { it in validPlayerIds }
+            val servingPlayerId = slot.servingPlayerId?.takeIf {
+                it == frontPlayerId || it == backPlayerId
+            }
+            RotationPositionLineup(
+                position = position,
+                frontPlayerId = frontPlayerId,
+                backPlayerId = backPlayerId,
+                servingPlayerId = servingPlayerId
+            )
+        }
+
+        val liberoPlayerIds = lineup.liberoPlayerIds
+            .filter { it in validPlayerIds }
+            .take(2)
+            .toSet()
+        val setterPlayerIds = lineup.setterPlayerIds
+            .filter { it in validPlayerIds }
+            .toSet()
+
+        val lineupEntities = normalizedPositions.map { slot ->
+            SetLineupEntity(
+                matchId = selectedMatchId,
+                setNumber = selectedSet,
+                position = slot.position,
+                frontPlayerId = slot.frontPlayerId,
+                backPlayerId = slot.backPlayerId,
+                servingPlayerId = slot.servingPlayerId
+            )
+        }
+        val roleEntities = (liberoPlayerIds + setterPlayerIds).map { playerId ->
+            SetPlayerRoleEntity(
+                matchId = selectedMatchId,
+                setNumber = selectedSet,
+                playerId = playerId,
+                isLibero = playerId in liberoPlayerIds,
+                isSetter = playerId in setterPlayerIds
+            )
+        }
+
+        viewModelScope.launch {
+            repository.saveSetLineup(
+                matchId = selectedMatchId,
+                setNumber = selectedSet,
+                lineups = lineupEntities,
+                roles = roleEntities
+            )
         }
     }
 

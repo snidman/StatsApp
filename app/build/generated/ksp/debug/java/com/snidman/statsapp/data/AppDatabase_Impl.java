@@ -35,10 +35,12 @@ public final class AppDatabase_Impl extends AppDatabase {
 
   private volatile StatEventDao _statEventDao;
 
+  private volatile SetLineupDao _setLineupDao;
+
   @Override
   @NonNull
   protected SupportSQLiteOpenHelper createOpenHelper(@NonNull final DatabaseConfiguration config) {
-    final SupportSQLiteOpenHelper.Callback _openCallback = new RoomOpenHelper(config, new RoomOpenHelper.Delegate(3) {
+    final SupportSQLiteOpenHelper.Callback _openCallback = new RoomOpenHelper(config, new RoomOpenHelper.Delegate(4) {
       @Override
       public void createAllTables(@NonNull final SupportSQLiteDatabase db) {
         db.execSQL("CREATE TABLE IF NOT EXISTS `players` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `jerseyNumber` INTEGER NOT NULL, `teamId` INTEGER)");
@@ -47,8 +49,13 @@ public final class AppDatabase_Impl extends AppDatabase {
         db.execSQL("CREATE TABLE IF NOT EXISTS `stat_events` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `playerId` INTEGER NOT NULL, `matchId` INTEGER NOT NULL, `setNumber` INTEGER NOT NULL, `skill` TEXT NOT NULL, `outcome` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, FOREIGN KEY(`playerId`) REFERENCES `players`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`matchId`) REFERENCES `matches`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )");
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_stat_events_playerId` ON `stat_events` (`playerId`)");
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_stat_events_matchId` ON `stat_events` (`matchId`)");
+        db.execSQL("CREATE TABLE IF NOT EXISTS `set_lineups` (`matchId` INTEGER NOT NULL, `setNumber` INTEGER NOT NULL, `position` INTEGER NOT NULL, `frontPlayerId` INTEGER, `backPlayerId` INTEGER, `servingPlayerId` INTEGER, PRIMARY KEY(`matchId`, `setNumber`, `position`), FOREIGN KEY(`matchId`) REFERENCES `matches`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )");
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_set_lineups_matchId` ON `set_lineups` (`matchId`)");
+        db.execSQL("CREATE TABLE IF NOT EXISTS `set_player_roles` (`matchId` INTEGER NOT NULL, `setNumber` INTEGER NOT NULL, `playerId` INTEGER NOT NULL, `isLibero` INTEGER NOT NULL, `isSetter` INTEGER NOT NULL, PRIMARY KEY(`matchId`, `setNumber`, `playerId`), FOREIGN KEY(`matchId`) REFERENCES `matches`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`playerId`) REFERENCES `players`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )");
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_set_player_roles_matchId` ON `set_player_roles` (`matchId`)");
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_set_player_roles_playerId` ON `set_player_roles` (`playerId`)");
         db.execSQL("CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)");
-        db.execSQL("INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'b762df26c74d83ccf27138d31849d04c')");
+        db.execSQL("INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '27fa8ea805c58acb4f3f17805ab53ed7')");
       }
 
       @Override
@@ -57,6 +64,8 @@ public final class AppDatabase_Impl extends AppDatabase {
         db.execSQL("DROP TABLE IF EXISTS `teams`");
         db.execSQL("DROP TABLE IF EXISTS `matches`");
         db.execSQL("DROP TABLE IF EXISTS `stat_events`");
+        db.execSQL("DROP TABLE IF EXISTS `set_lineups`");
+        db.execSQL("DROP TABLE IF EXISTS `set_player_roles`");
         final List<? extends RoomDatabase.Callback> _callbacks = mCallbacks;
         if (_callbacks != null) {
           for (RoomDatabase.Callback _callback : _callbacks) {
@@ -162,9 +171,46 @@ public final class AppDatabase_Impl extends AppDatabase {
                   + " Expected:\n" + _infoStatEvents + "\n"
                   + " Found:\n" + _existingStatEvents);
         }
+        final HashMap<String, TableInfo.Column> _columnsSetLineups = new HashMap<String, TableInfo.Column>(6);
+        _columnsSetLineups.put("matchId", new TableInfo.Column("matchId", "INTEGER", true, 1, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsSetLineups.put("setNumber", new TableInfo.Column("setNumber", "INTEGER", true, 2, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsSetLineups.put("position", new TableInfo.Column("position", "INTEGER", true, 3, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsSetLineups.put("frontPlayerId", new TableInfo.Column("frontPlayerId", "INTEGER", false, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsSetLineups.put("backPlayerId", new TableInfo.Column("backPlayerId", "INTEGER", false, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsSetLineups.put("servingPlayerId", new TableInfo.Column("servingPlayerId", "INTEGER", false, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        final HashSet<TableInfo.ForeignKey> _foreignKeysSetLineups = new HashSet<TableInfo.ForeignKey>(1);
+        _foreignKeysSetLineups.add(new TableInfo.ForeignKey("matches", "CASCADE", "NO ACTION", Arrays.asList("matchId"), Arrays.asList("id")));
+        final HashSet<TableInfo.Index> _indicesSetLineups = new HashSet<TableInfo.Index>(1);
+        _indicesSetLineups.add(new TableInfo.Index("index_set_lineups_matchId", false, Arrays.asList("matchId"), Arrays.asList("ASC")));
+        final TableInfo _infoSetLineups = new TableInfo("set_lineups", _columnsSetLineups, _foreignKeysSetLineups, _indicesSetLineups);
+        final TableInfo _existingSetLineups = TableInfo.read(db, "set_lineups");
+        if (!_infoSetLineups.equals(_existingSetLineups)) {
+          return new RoomOpenHelper.ValidationResult(false, "set_lineups(com.snidman.statsapp.data.SetLineupEntity).\n"
+                  + " Expected:\n" + _infoSetLineups + "\n"
+                  + " Found:\n" + _existingSetLineups);
+        }
+        final HashMap<String, TableInfo.Column> _columnsSetPlayerRoles = new HashMap<String, TableInfo.Column>(5);
+        _columnsSetPlayerRoles.put("matchId", new TableInfo.Column("matchId", "INTEGER", true, 1, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsSetPlayerRoles.put("setNumber", new TableInfo.Column("setNumber", "INTEGER", true, 2, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsSetPlayerRoles.put("playerId", new TableInfo.Column("playerId", "INTEGER", true, 3, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsSetPlayerRoles.put("isLibero", new TableInfo.Column("isLibero", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsSetPlayerRoles.put("isSetter", new TableInfo.Column("isSetter", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        final HashSet<TableInfo.ForeignKey> _foreignKeysSetPlayerRoles = new HashSet<TableInfo.ForeignKey>(2);
+        _foreignKeysSetPlayerRoles.add(new TableInfo.ForeignKey("matches", "CASCADE", "NO ACTION", Arrays.asList("matchId"), Arrays.asList("id")));
+        _foreignKeysSetPlayerRoles.add(new TableInfo.ForeignKey("players", "CASCADE", "NO ACTION", Arrays.asList("playerId"), Arrays.asList("id")));
+        final HashSet<TableInfo.Index> _indicesSetPlayerRoles = new HashSet<TableInfo.Index>(2);
+        _indicesSetPlayerRoles.add(new TableInfo.Index("index_set_player_roles_matchId", false, Arrays.asList("matchId"), Arrays.asList("ASC")));
+        _indicesSetPlayerRoles.add(new TableInfo.Index("index_set_player_roles_playerId", false, Arrays.asList("playerId"), Arrays.asList("ASC")));
+        final TableInfo _infoSetPlayerRoles = new TableInfo("set_player_roles", _columnsSetPlayerRoles, _foreignKeysSetPlayerRoles, _indicesSetPlayerRoles);
+        final TableInfo _existingSetPlayerRoles = TableInfo.read(db, "set_player_roles");
+        if (!_infoSetPlayerRoles.equals(_existingSetPlayerRoles)) {
+          return new RoomOpenHelper.ValidationResult(false, "set_player_roles(com.snidman.statsapp.data.SetPlayerRoleEntity).\n"
+                  + " Expected:\n" + _infoSetPlayerRoles + "\n"
+                  + " Found:\n" + _existingSetPlayerRoles);
+        }
         return new RoomOpenHelper.ValidationResult(true, null);
       }
-    }, "b762df26c74d83ccf27138d31849d04c", "bdceed02aeba4ea000e5e4045ff91013");
+    }, "27fa8ea805c58acb4f3f17805ab53ed7", "25fb42f2401d17a31c5af8af10869521");
     final SupportSQLiteOpenHelper.Configuration _sqliteConfig = SupportSQLiteOpenHelper.Configuration.builder(config.context).name(config.name).callback(_openCallback).build();
     final SupportSQLiteOpenHelper _helper = config.sqliteOpenHelperFactory.create(_sqliteConfig);
     return _helper;
@@ -175,7 +221,7 @@ public final class AppDatabase_Impl extends AppDatabase {
   protected InvalidationTracker createInvalidationTracker() {
     final HashMap<String, String> _shadowTablesMap = new HashMap<String, String>(0);
     final HashMap<String, Set<String>> _viewTables = new HashMap<String, Set<String>>(0);
-    return new InvalidationTracker(this, _shadowTablesMap, _viewTables, "players","teams","matches","stat_events");
+    return new InvalidationTracker(this, _shadowTablesMap, _viewTables, "players","teams","matches","stat_events","set_lineups","set_player_roles");
   }
 
   @Override
@@ -195,6 +241,8 @@ public final class AppDatabase_Impl extends AppDatabase {
       _db.execSQL("DELETE FROM `teams`");
       _db.execSQL("DELETE FROM `matches`");
       _db.execSQL("DELETE FROM `stat_events`");
+      _db.execSQL("DELETE FROM `set_lineups`");
+      _db.execSQL("DELETE FROM `set_player_roles`");
       super.setTransactionSuccessful();
     } finally {
       super.endTransaction();
@@ -216,6 +264,7 @@ public final class AppDatabase_Impl extends AppDatabase {
     _typeConvertersMap.put(TeamDao.class, TeamDao_Impl.getRequiredConverters());
     _typeConvertersMap.put(MatchDao.class, MatchDao_Impl.getRequiredConverters());
     _typeConvertersMap.put(StatEventDao.class, StatEventDao_Impl.getRequiredConverters());
+    _typeConvertersMap.put(SetLineupDao.class, SetLineupDao_Impl.getRequiredConverters());
     return _typeConvertersMap;
   }
 
@@ -286,6 +335,20 @@ public final class AppDatabase_Impl extends AppDatabase {
           _statEventDao = new StatEventDao_Impl(this);
         }
         return _statEventDao;
+      }
+    }
+  }
+
+  @Override
+  public SetLineupDao setLineupDao() {
+    if (_setLineupDao != null) {
+      return _setLineupDao;
+    } else {
+      synchronized(this) {
+        if(_setLineupDao == null) {
+          _setLineupDao = new SetLineupDao_Impl(this);
+        }
+        return _setLineupDao;
       }
     }
   }

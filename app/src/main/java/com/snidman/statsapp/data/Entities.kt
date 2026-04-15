@@ -54,3 +54,52 @@ data class StatEventEntity(
     val outcome: String,
     val createdAt: Long
 )
+
+@Entity(
+    tableName = "set_lineups",
+    primaryKeys = ["matchId", "setNumber", "position"],
+    foreignKeys = [
+        ForeignKey(
+            entity = MatchEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["matchId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [Index("matchId")]
+)
+data class SetLineupEntity(
+    val matchId: Long,
+    val setNumber: Int,
+    val position: Int,
+    val frontPlayerId: Long? = null,
+    val backPlayerId: Long? = null,
+    val servingPlayerId: Long? = null
+)
+
+@Entity(
+    tableName = "set_player_roles",
+    primaryKeys = ["matchId", "setNumber", "playerId"],
+    foreignKeys = [
+        ForeignKey(
+            entity = MatchEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["matchId"],
+            onDelete = ForeignKey.CASCADE
+        ),
+        ForeignKey(
+            entity = PlayerEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["playerId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [Index("matchId"), Index("playerId")]
+)
+data class SetPlayerRoleEntity(
+    val matchId: Long,
+    val setNumber: Int,
+    val playerId: Long,
+    val isLibero: Boolean,
+    val isSetter: Boolean
+)
