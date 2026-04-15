@@ -21,6 +21,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -97,7 +98,6 @@ class MainActivity : ComponentActivity() {
                             onDeleteSelectedMatch = viewModel::deleteSelectedMatch,
                             onDeleteSelectedSet = viewModel::deleteSelectedSet,
                             onSaveSetLineup = viewModel::saveSelectedSetLineup,
-                            onDeletePlayer = viewModel::deletePlayer,
                             onOpenTeamManager = { showingManagementScreen = true },
                             onClearExportMessage = viewModel::clearExportMessage,
                             onExportCsv = {
@@ -122,7 +122,6 @@ private fun StatCaptureScreen(
     onDeleteSelectedMatch: () -> Unit,
     onDeleteSelectedSet: () -> Unit,
     onSaveSetLineup: (SetRotationLineupState) -> Unit,
-    onDeletePlayer: (Long) -> Unit,
     onOpenTeamManager: () -> Unit,
     onClearExportMessage: () -> Unit,
     onExportCsv: () -> Unit
@@ -142,6 +141,23 @@ private fun StatCaptureScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Teams and player profiles")
+                        Button(onClick = onOpenTeamManager) {
+                            Text("Manage Teams & Players")
+                        }
+                    }
+                }
+            }
+
             item {
                 FilterAndActionsCard(
                     matches = state.matches,
@@ -163,23 +179,6 @@ private fun StatCaptureScreen(
                     onSaveSetLineup = onSaveSetLineup,
                     onExportCsv = onExportCsv
                 )
-            }
-
-            item {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Teams and player profiles")
-                        Button(onClick = onOpenTeamManager) {
-                            Text("Manage Teams & Players")
-                        }
-                    }
-                }
             }
 
             if (state.lastExportMessage != null) {
@@ -207,9 +206,7 @@ private fun StatCaptureScreen(
             items(state.players, key = { it.player.id }) { playerState ->
                 PlayerStatCard(
                     playerState = playerState,
-                    playerDeleteEventCount = state.playerDeleteEventCounts[playerState.player.id] ?: 0,
-                    onRecordStat = onRecordStat,
-                    onDeletePlayer = onDeletePlayer
+                    onRecordStat = onRecordStat
                 )
             }
 
@@ -824,41 +821,17 @@ private fun AddPlayerCard(onCreatePlayer: (String, Int) -> Unit) {
 @Composable
 private fun PlayerStatCard(
     playerState: PlayerCardState,
-    playerDeleteEventCount: Int,
-    onRecordStat: (Long, String, String) -> Unit,
-    onDeletePlayer: (Long) -> Unit
+    onRecordStat: (Long, String, String) -> Unit
 ) {
     val player = playerState.player
-    var showDeletePlayerDialog by remember { mutableStateOf(false) }
-
-    if (showDeletePlayerDialog) {
-        ConfirmDeleteDialog(
-            title = "Delete Player?",
-            message = "This will permanently remove ${player.name} and $playerDeleteEventCount event(s).",
-            onConfirm = {
-                showDeletePlayerDialog = false
-                onDeletePlayer(player.id)
-            },
-            onDismiss = { showDeletePlayerDialog = false }
-        )
-    }
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "${player.name} #${player.jerseyNumber}",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
-                )
-                TextButton(onClick = { showDeletePlayerDialog = true }) {
-                    Text("Delete Player")
-                }
-            }
+            Text(
+                text = "${player.name} #${player.jerseyNumber}",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
 
             StatRow(
                 title = "Serve (0-4)",
@@ -953,7 +926,7 @@ private fun TeamManagementScreen(
                 }
             }
 
-            items(teams, key = { it.team.id }) { roster ->
+            itemsIndexed(teams, key = { index, roster -> "team-${roster.team.id}-$index" }) { _, roster ->
                 TeamCard(
                     roster = roster,
                     players = players,
@@ -967,7 +940,10 @@ private fun TeamManagementScreen(
                 Text("Players", style = MaterialTheme.typography.titleLarge)
             }
 
-            items(players.sortedWith(compareBy(PlayerEntity::jerseyNumber, PlayerEntity::name)), key = { it.id }) { player ->
+            itemsIndexed(
+                players.sortedWith(compareBy(PlayerEntity::jerseyNumber, PlayerEntity::name)),
+                key = { index, player -> "player-${player.id}-$index" }
+            ) { _, player ->
                 PlayerManagementCard(
                     player = player,
                     teamName = player.teamId?.let { teamNameById[it] },
@@ -1366,7 +1342,6 @@ private fun StatCaptureScreenPreview() {
             onDeleteSelectedMatch = {},
             onDeleteSelectedSet = {},
             onSaveSetLineup = {},
-            onDeletePlayer = {},
             onOpenTeamManager = {},
             onClearExportMessage = {},
             onExportCsv = {}
