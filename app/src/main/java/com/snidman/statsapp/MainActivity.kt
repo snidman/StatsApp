@@ -147,10 +147,9 @@ private fun StatCaptureScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        horizontalArrangement = Arrangement.End,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Teams and player profiles")
                         Button(onClick = onOpenTeamManager) {
                             Text("Manage Teams & Players")
                         }
