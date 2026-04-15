@@ -80,6 +80,7 @@ class MainActivity : ComponentActivity() {
                             players = uiState.allPlayers,
                             onBack = { showingManagementScreen = false },
                             onCreateTeam = viewModel::addTeam,
+                            onCreatePlayer = viewModel::addPlayer,
                             onUpdateTeam = viewModel::updateTeam,
                             onDeleteTeam = viewModel::deleteTeam,
                             onUpdatePlayer = viewModel::updatePlayer,
@@ -96,7 +97,6 @@ class MainActivity : ComponentActivity() {
                             onDeleteSelectedMatch = viewModel::deleteSelectedMatch,
                             onDeleteSelectedSet = viewModel::deleteSelectedSet,
                             onSaveSetLineup = viewModel::saveSelectedSetLineup,
-                            onCreatePlayer = viewModel::addPlayer,
                             onDeletePlayer = viewModel::deletePlayer,
                             onOpenTeamManager = { showingManagementScreen = true },
                             onClearExportMessage = viewModel::clearExportMessage,
@@ -122,7 +122,6 @@ private fun StatCaptureScreen(
     onDeleteSelectedMatch: () -> Unit,
     onDeleteSelectedSet: () -> Unit,
     onSaveSetLineup: (SetRotationLineupState) -> Unit,
-    onCreatePlayer: (String, Int) -> Unit,
     onDeletePlayer: (Long) -> Unit,
     onOpenTeamManager: () -> Unit,
     onClearExportMessage: () -> Unit,
@@ -162,10 +161,6 @@ private fun StatCaptureScreen(
                     onSaveSetLineup = onSaveSetLineup,
                     onExportCsv = onExportCsv
                 )
-            }
-
-            item {
-                AddPlayerCard(onCreatePlayer = onCreatePlayer)
             }
 
             item {
@@ -845,6 +840,7 @@ private fun TeamManagementScreen(
     players: List<PlayerEntity>,
     onBack: () -> Unit,
     onCreateTeam: (String, List<Long>) -> Unit,
+    onCreatePlayer: (String, Int) -> Unit,
     onUpdateTeam: (Long, String, List<Long>) -> Unit,
     onDeleteTeam: (Long) -> Unit,
     onUpdatePlayer: (Long, String, Int) -> Unit,
@@ -878,6 +874,10 @@ private fun TeamManagementScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            item {
+                AddPlayerCard(onCreatePlayer = onCreatePlayer)
+            }
+
             item {
                 AddTeamCard(
                     players = players,
@@ -1309,7 +1309,6 @@ private fun StatCaptureScreenPreview() {
             onDeleteSelectedMatch = {},
             onDeleteSelectedSet = {},
             onSaveSetLineup = {},
-            onCreatePlayer = { _, _ -> },
             onDeletePlayer = {},
             onOpenTeamManager = {},
             onClearExportMessage = {},
