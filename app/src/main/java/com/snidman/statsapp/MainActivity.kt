@@ -17,7 +17,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -192,7 +192,7 @@ private fun EventRow(event: StatEntry) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Divider(modifier = Modifier.padding(top = 8.dp))
+            HorizontalDivider(modifier = Modifier.padding(top = 8.dp))
         }
     }
 }
