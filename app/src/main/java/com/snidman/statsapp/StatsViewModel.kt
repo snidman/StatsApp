@@ -10,6 +10,7 @@ import com.snidman.statsapp.data.MatchEntity
 import com.snidman.statsapp.data.PlayerEntity
 import com.snidman.statsapp.data.StatEventEntity
 import com.snidman.statsapp.data.StatsRepository
+import com.snidman.statsapp.data.TeamEntity
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -35,8 +36,15 @@ data class PlayerCardState(
     val counters: PlayerCounters
 )
 
+data class TeamRosterState(
+    val team: TeamEntity,
+    val players: List<PlayerEntity>
+)
+
 data class StatsUiState(
     val players: List<PlayerCardState> = emptyList(),
+    val allPlayers: List<PlayerEntity> = emptyList(),
+    val teams: List<TeamRosterState> = emptyList(),
     val matches: List<MatchEntity> = emptyList(),
     val selectedMatchId: Long? = null,
     val selectedSet: Int? = null,
@@ -55,6 +63,9 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
     private val exportMessageFlow = MutableStateFlow<String?>(null)
 
     private val playersFlow = repository.playersFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    private val teamsFlow = repository.teamsFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val matchesFlow = repository.matchesFlow
@@ -108,13 +119,25 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
+    private data class StaticData(
+        val players: List<PlayerEntity>,
+        val teams: List<TeamEntity>,
+        val matches: List<MatchEntity>
+    )
+
+    private val staticDataFlow = combine(playersFlow, teamsFlow, matchesFlow) { players, teams, matches ->
+        StaticData(players = players, teams = teams, matches = matches)
+    }
+
     private val baseStateCoreFlow = combine(
-        playersFlow,
-        matchesFlow,
+        staticDataFlow,
         selectedMatchIdFlow,
         selectedSetFlow,
         eventsFlow
-    ) { players, matches, selectedMatchId, selectedSet, events ->
+    ) { staticData, selectedMatchId, selectedSet, events ->
+        val players = staticData.players
+        val teams = staticData.teams
+        val matches = staticData.matches
         val effectiveMatchId = selectedMatchId ?: matches.firstOrNull()?.id
 
         val playerCards = players.map { player ->
@@ -130,8 +153,19 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
 
+        val teamRosters = teams.map { team ->
+            TeamRosterState(
+                team = team,
+                players = players
+                    .filter { it.teamId == team.id }
+                    .sortedWith(compareBy(PlayerEntity::jerseyNumber, PlayerEntity::name))
+            )
+        }
+
         StatsUiState(
             players = playerCards,
+            allPlayers = players,
+            teams = teamRosters,
             matches = matches,
             selectedMatchId = effectiveMatchId,
             selectedSet = selectedSet,
@@ -187,6 +221,14 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun updatePlayer(playerId: Long, name: String, jerseyNumber: Int) {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return
+        viewModelScope.launch {
+            repository.updatePlayer(playerId, trimmed, jerseyNumber)
+        }
+    }
+
     fun deletePlayer(playerId: Long) {
         viewModelScope.launch {
             repository.deletePlayer(playerId)
@@ -197,6 +239,28 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val newMatchId = repository.addMatch(name)
             selectedMatchIdFlow.value = newMatchId
+        }
+    }
+
+    fun addTeam(name: String, playerIds: List<Long>) {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return
+        viewModelScope.launch {
+            repository.addTeam(trimmed, playerIds.distinct())
+        }
+    }
+
+    fun updateTeam(teamId: Long, name: String, playerIds: List<Long>) {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return
+        viewModelScope.launch {
+            repository.updateTeam(teamId, trimmed, playerIds.distinct())
+        }
+    }
+
+    fun deleteTeam(teamId: Long) {
+        viewModelScope.launch {
+            repository.deleteTeam(teamId)
         }
     }
 

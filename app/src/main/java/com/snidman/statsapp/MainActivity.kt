@@ -22,6 +22,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -33,6 +34,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -66,23 +68,38 @@ class MainActivity : ComponentActivity() {
             StatsAppTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+                    var showingManagementScreen by rememberSaveable { mutableStateOf(false) }
                     val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())
                         .format(Date())
-                    StatCaptureScreen(
-                        state = uiState,
-                        onRecordStat = viewModel::recordStat,
-                        onSelectMatch = viewModel::selectMatch,
-                        onSelectSet = viewModel::selectSet,
-                        onCreateMatch = viewModel::addMatch,
-                        onDeleteSelectedMatch = viewModel::deleteSelectedMatch,
-                        onDeleteSelectedSet = viewModel::deleteSelectedSet,
-                        onCreatePlayer = viewModel::addPlayer,
-                        onDeletePlayer = viewModel::deletePlayer,
-                        onClearExportMessage = viewModel::clearExportMessage,
-                        onExportCsv = {
-                            exportLauncher.launch("volleyball_stats_$timestamp.csv")
-                        }
-                    )
+                    if (showingManagementScreen) {
+                        TeamManagementScreen(
+                            teams = uiState.teams,
+                            players = uiState.allPlayers,
+                            onBack = { showingManagementScreen = false },
+                            onCreateTeam = viewModel::addTeam,
+                            onUpdateTeam = viewModel::updateTeam,
+                            onDeleteTeam = viewModel::deleteTeam,
+                            onUpdatePlayer = viewModel::updatePlayer,
+                            onDeletePlayer = viewModel::deletePlayer
+                        )
+                    } else {
+                        StatCaptureScreen(
+                            state = uiState,
+                            onRecordStat = viewModel::recordStat,
+                            onSelectMatch = viewModel::selectMatch,
+                            onSelectSet = viewModel::selectSet,
+                            onCreateMatch = viewModel::addMatch,
+                            onDeleteSelectedMatch = viewModel::deleteSelectedMatch,
+                            onDeleteSelectedSet = viewModel::deleteSelectedSet,
+                            onCreatePlayer = viewModel::addPlayer,
+                            onDeletePlayer = viewModel::deletePlayer,
+                            onOpenTeamManager = { showingManagementScreen = true },
+                            onClearExportMessage = viewModel::clearExportMessage,
+                            onExportCsv = {
+                                exportLauncher.launch("volleyball_stats_$timestamp.csv")
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -100,6 +117,7 @@ private fun StatCaptureScreen(
     onDeleteSelectedSet: () -> Unit,
     onCreatePlayer: (String, Int) -> Unit,
     onDeletePlayer: (Long) -> Unit,
+    onOpenTeamManager: () -> Unit,
     onClearExportMessage: () -> Unit,
     onExportCsv: () -> Unit
 ) {
@@ -137,6 +155,23 @@ private fun StatCaptureScreen(
 
             item {
                 AddPlayerCard(onCreatePlayer = onCreatePlayer)
+            }
+
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Teams and player profiles")
+                        Button(onClick = onOpenTeamManager) {
+                            Text("Manage")
+                        }
+                    }
+                }
             }
 
             if (state.lastExportMessage != null) {
@@ -428,6 +463,388 @@ private fun PlayerStatCard(
 }
 
 @Composable
+private fun TeamManagementScreen(
+    teams: List<TeamRosterState>,
+    players: List<PlayerEntity>,
+    onBack: () -> Unit,
+    onCreateTeam: (String, List<Long>) -> Unit,
+    onUpdateTeam: (Long, String, List<Long>) -> Unit,
+    onDeleteTeam: (Long) -> Unit,
+    onUpdatePlayer: (Long, String, Int) -> Unit,
+    onDeletePlayer: (Long) -> Unit
+) {
+    val teamNameById = teams.associate { it.team.id to it.team.name }
+
+    Scaffold(
+        topBar = {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text("Team & Player Manager", style = MaterialTheme.typography.headlineSmall)
+                    Text("Create, edit, and assign players", style = MaterialTheme.typography.bodyMedium)
+                }
+                Button(onClick = onBack) {
+                    Text("Back to Stats")
+                }
+            }
+        }
+    ) { innerPadding ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            item {
+                AddTeamCard(
+                    players = players,
+                    teamNameById = teamNameById,
+                    onCreateTeam = onCreateTeam
+                )
+            }
+
+            item {
+                Text("Teams", style = MaterialTheme.typography.titleLarge)
+            }
+
+            if (teams.isEmpty()) {
+                item {
+                    Text("No teams yet.")
+                }
+            }
+
+            items(teams, key = { it.team.id }) { roster ->
+                TeamCard(
+                    roster = roster,
+                    players = players,
+                    teamNameById = teamNameById,
+                    onUpdateTeam = onUpdateTeam,
+                    onDeleteTeam = onDeleteTeam
+                )
+            }
+
+            item {
+                Text("Players", style = MaterialTheme.typography.titleLarge)
+            }
+
+            items(players.sortedWith(compareBy(PlayerEntity::jerseyNumber, PlayerEntity::name)), key = { it.id }) { player ->
+                PlayerManagementCard(
+                    player = player,
+                    teamName = player.teamId?.let { teamNameById[it] },
+                    onUpdatePlayer = onUpdatePlayer,
+                    onDeletePlayer = onDeletePlayer
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AddTeamCard(
+    players: List<PlayerEntity>,
+    teamNameById: Map<Long, String>,
+    onCreateTeam: (String, List<Long>) -> Unit
+) {
+    var teamName by remember { mutableStateOf("") }
+    var selectedPlayerIds by remember { mutableStateOf(setOf<Long>()) }
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Add Team", style = MaterialTheme.typography.titleLarge)
+            OutlinedTextField(
+                modifier = Modifier.fillMaxWidth(),
+                value = teamName,
+                onValueChange = { teamName = it },
+                label = { Text("Team name") },
+                singleLine = true
+            )
+            Text("Select players to assign", style = MaterialTheme.typography.titleMedium)
+            PlayerSelector(
+                players = players,
+                selectedPlayerIds = selectedPlayerIds,
+                teamNameById = teamNameById,
+                onToggle = { playerId ->
+                    selectedPlayerIds = if (selectedPlayerIds.contains(playerId)) {
+                        selectedPlayerIds - playerId
+                    } else {
+                        selectedPlayerIds + playerId
+                    }
+                }
+            )
+            Text(
+                "If a selected player is already on another team, they will be moved.",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Button(onClick = {
+                val trimmedName = teamName.trim()
+                if (trimmedName.isNotEmpty()) {
+                    onCreateTeam(trimmedName, selectedPlayerIds.toList())
+                    teamName = ""
+                    selectedPlayerIds = emptySet()
+                }
+            }) {
+                Text("Create Team")
+            }
+        }
+    }
+}
+
+@Composable
+private fun TeamCard(
+    roster: TeamRosterState,
+    players: List<PlayerEntity>,
+    teamNameById: Map<Long, String>,
+    onUpdateTeam: (Long, String, List<Long>) -> Unit,
+    onDeleteTeam: (Long) -> Unit
+) {
+    var showEditDialog by remember { mutableStateOf(false) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
+
+    if (showEditDialog) {
+        EditTeamDialog(
+            roster = roster,
+            players = players,
+            teamNameById = teamNameById,
+            onSave = { teamId, name, playerIds ->
+                onUpdateTeam(teamId, name, playerIds)
+                showEditDialog = false
+            },
+            onDismiss = { showEditDialog = false }
+        )
+    }
+
+    if (showDeleteDialog) {
+        ConfirmDeleteDialog(
+            title = "Delete Team?",
+            message = "This will delete ${roster.team.name}. ${roster.players.size} player(s) will become unassigned.",
+            onConfirm = {
+                showDeleteDialog = false
+                onDeleteTeam(roster.team.id)
+            },
+            onDismiss = { showDeleteDialog = false }
+        )
+    }
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(roster.team.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = { showEditDialog = true }) { Text("Edit") }
+                    TextButton(onClick = { showDeleteDialog = true }) { Text("Delete") }
+                }
+            }
+
+            if (roster.players.isEmpty()) {
+                Text("No players assigned.")
+            } else {
+                roster.players.forEach { player ->
+                    Text("${player.name} #${player.jerseyNumber}")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EditTeamDialog(
+    roster: TeamRosterState,
+    players: List<PlayerEntity>,
+    teamNameById: Map<Long, String>,
+    onSave: (Long, String, List<Long>) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var teamName by remember(roster.team.id) { mutableStateOf(roster.team.name) }
+    var selectedPlayerIds by remember(roster.team.id) {
+        mutableStateOf(roster.players.map { it.id }.toSet())
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit Team") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    modifier = Modifier.fillMaxWidth(),
+                    value = teamName,
+                    onValueChange = { teamName = it },
+                    label = { Text("Team name") },
+                    singleLine = true
+                )
+                Text("Players", style = MaterialTheme.typography.titleMedium)
+                PlayerSelector(
+                    players = players,
+                    selectedPlayerIds = selectedPlayerIds,
+                    teamNameById = teamNameById,
+                    onToggle = { playerId ->
+                        selectedPlayerIds = if (selectedPlayerIds.contains(playerId)) {
+                            selectedPlayerIds - playerId
+                        } else {
+                            selectedPlayerIds + playerId
+                        }
+                    }
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                onSave(roster.team.id, teamName.trim(), selectedPlayerIds.toList())
+            }) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PlayerSelector(
+    players: List<PlayerEntity>,
+    selectedPlayerIds: Set<Long>,
+    teamNameById: Map<Long, String>,
+    onToggle: (Long) -> Unit
+) {
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        players.sortedWith(compareBy(PlayerEntity::jerseyNumber, PlayerEntity::name)).forEach { player ->
+            val isSelected = selectedPlayerIds.contains(player.id)
+            val assignedTeamName = player.teamId?.let { teamNameById[it] }
+            val suffix = if (assignedTeamName != null) " ($assignedTeamName)" else ""
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(
+                    checked = isSelected,
+                    onCheckedChange = { onToggle(player.id) }
+                )
+                Text("${player.name} #${player.jerseyNumber}$suffix")
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlayerManagementCard(
+    player: PlayerEntity,
+    teamName: String?,
+    onUpdatePlayer: (Long, String, Int) -> Unit,
+    onDeletePlayer: (Long) -> Unit
+) {
+    var showEditDialog by remember { mutableStateOf(false) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
+
+    if (showEditDialog) {
+        EditPlayerDialog(
+            player = player,
+            onSave = { name, jersey ->
+                onUpdatePlayer(player.id, name, jersey)
+                showEditDialog = false
+            },
+            onDismiss = { showEditDialog = false }
+        )
+    }
+
+    if (showDeleteDialog) {
+        ConfirmDeleteDialog(
+            title = "Delete Player?",
+            message = "This will delete ${player.name} #${player.jerseyNumber} and their stats.",
+            onConfirm = {
+                showDeleteDialog = false
+                onDeletePlayer(player.id)
+            },
+            onDismiss = { showDeleteDialog = false }
+        )
+    }
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text("${player.name} #${player.jerseyNumber}", fontWeight = FontWeight.Bold)
+                Text("Team: ${teamName ?: "Unassigned"}", style = MaterialTheme.typography.bodySmall)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = { showEditDialog = true }) {
+                    Text("Edit")
+                }
+                TextButton(onClick = { showDeleteDialog = true }) {
+                    Text("Delete")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EditPlayerDialog(
+    player: PlayerEntity,
+    onSave: (String, Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var name by remember(player.id) { mutableStateOf(player.name) }
+    var jerseyText by remember(player.id) { mutableStateOf(player.jerseyNumber.toString()) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit Player") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    modifier = Modifier.fillMaxWidth(),
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Player name") },
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    modifier = Modifier.fillMaxWidth(),
+                    value = jerseyText,
+                    onValueChange = { jerseyText = it.filter(Char::isDigit) },
+                    label = { Text("Jersey number") },
+                    singleLine = true
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                val jersey = jerseyText.toIntOrNull()
+                val trimmed = name.trim()
+                if (trimmed.isNotEmpty() && jersey != null) {
+                    onSave(trimmed, jersey)
+                }
+            }) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+@Composable
 private fun ConfirmDeleteDialog(
     title: String,
     message: String,
@@ -515,6 +932,7 @@ private fun StatCaptureScreenPreview() {
             onDeleteSelectedSet = {},
             onCreatePlayer = { _, _ -> },
             onDeletePlayer = {},
+            onOpenTeamManager = {},
             onClearExportMessage = {},
             onExportCsv = {}
         )

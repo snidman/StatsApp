@@ -9,8 +9,17 @@ The app now supports full player-based stat tracking with local persistence.
 ### Player-based Live Entry
 
 - Add players (name + jersey).
+- Edit player name and jersey number.
 - Capture stats for all players on one screen.
 - Per-player stat buttons show live counts.
+
+### Teams and Roster Management
+
+- Dedicated management screen for teams and player profiles.
+- Create, edit, and delete teams.
+- Assign or unassign players while creating/editing a team.
+- Players can belong to only one team at a time (reassigned automatically when moved).
+- Duplicate player names and jersey numbers are allowed.
 
 ### Tracked Skills
 

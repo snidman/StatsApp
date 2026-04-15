@@ -10,6 +10,7 @@ import androidx.room.RoomSQLiteQuery;
 import androidx.room.SharedSQLiteStatement;
 import androidx.room.util.CursorUtil;
 import androidx.room.util.DBUtil;
+import androidx.room.util.StringUtil;
 import androidx.sqlite.db.SupportSQLiteStatement;
 import java.lang.Class;
 import java.lang.Exception;
@@ -18,6 +19,7 @@ import java.lang.Long;
 import java.lang.Object;
 import java.lang.Override;
 import java.lang.String;
+import java.lang.StringBuilder;
 import java.lang.SuppressWarnings;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -35,6 +37,10 @@ public final class PlayerDao_Impl implements PlayerDao {
 
   private final EntityInsertionAdapter<PlayerEntity> __insertionAdapterOfPlayerEntity;
 
+  private final SharedSQLiteStatement __preparedStmtOfUpdatePlayer;
+
+  private final SharedSQLiteStatement __preparedStmtOfClearTeamMembers;
+
   private final SharedSQLiteStatement __preparedStmtOfDeletePlayer;
 
   public PlayerDao_Impl(@NonNull final RoomDatabase __db) {
@@ -43,7 +49,7 @@ public final class PlayerDao_Impl implements PlayerDao {
       @Override
       @NonNull
       protected String createQuery() {
-        return "INSERT OR REPLACE INTO `players` (`id`,`name`,`jerseyNumber`) VALUES (nullif(?, 0),?,?)";
+        return "INSERT OR REPLACE INTO `players` (`id`,`name`,`jerseyNumber`,`teamId`) VALUES (nullif(?, 0),?,?,?)";
       }
 
       @Override
@@ -52,6 +58,27 @@ public final class PlayerDao_Impl implements PlayerDao {
         statement.bindLong(1, entity.getId());
         statement.bindString(2, entity.getName());
         statement.bindLong(3, entity.getJerseyNumber());
+        if (entity.getTeamId() == null) {
+          statement.bindNull(4);
+        } else {
+          statement.bindLong(4, entity.getTeamId());
+        }
+      }
+    };
+    this.__preparedStmtOfUpdatePlayer = new SharedSQLiteStatement(__db) {
+      @Override
+      @NonNull
+      public String createQuery() {
+        final String _query = "UPDATE players SET name = ?, jerseyNumber = ? WHERE id = ?";
+        return _query;
+      }
+    };
+    this.__preparedStmtOfClearTeamMembers = new SharedSQLiteStatement(__db) {
+      @Override
+      @NonNull
+      public String createQuery() {
+        final String _query = "UPDATE players SET teamId = NULL WHERE teamId = ?";
+        return _query;
       }
     };
     this.__preparedStmtOfDeletePlayer = new SharedSQLiteStatement(__db) {
@@ -78,6 +105,61 @@ public final class PlayerDao_Impl implements PlayerDao {
           return _result;
         } finally {
           __db.endTransaction();
+        }
+      }
+    }, $completion);
+  }
+
+  @Override
+  public Object updatePlayer(final long playerId, final String name, final int jerseyNumber,
+      final Continuation<? super Unit> $completion) {
+    return CoroutinesRoom.execute(__db, true, new Callable<Unit>() {
+      @Override
+      @NonNull
+      public Unit call() throws Exception {
+        final SupportSQLiteStatement _stmt = __preparedStmtOfUpdatePlayer.acquire();
+        int _argIndex = 1;
+        _stmt.bindString(_argIndex, name);
+        _argIndex = 2;
+        _stmt.bindLong(_argIndex, jerseyNumber);
+        _argIndex = 3;
+        _stmt.bindLong(_argIndex, playerId);
+        try {
+          __db.beginTransaction();
+          try {
+            _stmt.executeUpdateDelete();
+            __db.setTransactionSuccessful();
+            return Unit.INSTANCE;
+          } finally {
+            __db.endTransaction();
+          }
+        } finally {
+          __preparedStmtOfUpdatePlayer.release(_stmt);
+        }
+      }
+    }, $completion);
+  }
+
+  @Override
+  public Object clearTeamMembers(final long teamId, final Continuation<? super Unit> $completion) {
+    return CoroutinesRoom.execute(__db, true, new Callable<Unit>() {
+      @Override
+      @NonNull
+      public Unit call() throws Exception {
+        final SupportSQLiteStatement _stmt = __preparedStmtOfClearTeamMembers.acquire();
+        int _argIndex = 1;
+        _stmt.bindLong(_argIndex, teamId);
+        try {
+          __db.beginTransaction();
+          try {
+            _stmt.executeUpdateDelete();
+            __db.setTransactionSuccessful();
+            return Unit.INSTANCE;
+          } finally {
+            __db.endTransaction();
+          }
+        } finally {
+          __preparedStmtOfClearTeamMembers.release(_stmt);
         }
       }
     }, $completion);
@@ -121,6 +203,7 @@ public final class PlayerDao_Impl implements PlayerDao {
           final int _cursorIndexOfId = CursorUtil.getColumnIndexOrThrow(_cursor, "id");
           final int _cursorIndexOfName = CursorUtil.getColumnIndexOrThrow(_cursor, "name");
           final int _cursorIndexOfJerseyNumber = CursorUtil.getColumnIndexOrThrow(_cursor, "jerseyNumber");
+          final int _cursorIndexOfTeamId = CursorUtil.getColumnIndexOrThrow(_cursor, "teamId");
           final List<PlayerEntity> _result = new ArrayList<PlayerEntity>(_cursor.getCount());
           while (_cursor.moveToNext()) {
             final PlayerEntity _item;
@@ -130,7 +213,13 @@ public final class PlayerDao_Impl implements PlayerDao {
             _tmpName = _cursor.getString(_cursorIndexOfName);
             final int _tmpJerseyNumber;
             _tmpJerseyNumber = _cursor.getInt(_cursorIndexOfJerseyNumber);
-            _item = new PlayerEntity(_tmpId,_tmpName,_tmpJerseyNumber);
+            final Long _tmpTeamId;
+            if (_cursor.isNull(_cursorIndexOfTeamId)) {
+              _tmpTeamId = null;
+            } else {
+              _tmpTeamId = _cursor.getLong(_cursorIndexOfTeamId);
+            }
+            _item = new PlayerEntity(_tmpId,_tmpName,_tmpJerseyNumber,_tmpTeamId);
             _result.add(_item);
           }
           return _result;
@@ -169,6 +258,72 @@ public final class PlayerDao_Impl implements PlayerDao {
         } finally {
           _cursor.close();
           _statement.release();
+        }
+      }
+    }, $completion);
+  }
+
+  @Override
+  public Object clearTeamForPlayers(final List<Long> playerIds,
+      final Continuation<? super Unit> $completion) {
+    return CoroutinesRoom.execute(__db, true, new Callable<Unit>() {
+      @Override
+      @NonNull
+      public Unit call() throws Exception {
+        final StringBuilder _stringBuilder = StringUtil.newStringBuilder();
+        _stringBuilder.append("UPDATE players SET teamId = NULL WHERE id IN (");
+        final int _inputSize = playerIds.size();
+        StringUtil.appendPlaceholders(_stringBuilder, _inputSize);
+        _stringBuilder.append(")");
+        final String _sql = _stringBuilder.toString();
+        final SupportSQLiteStatement _stmt = __db.compileStatement(_sql);
+        int _argIndex = 1;
+        for (long _item : playerIds) {
+          _stmt.bindLong(_argIndex, _item);
+          _argIndex++;
+        }
+        __db.beginTransaction();
+        try {
+          _stmt.executeUpdateDelete();
+          __db.setTransactionSuccessful();
+          return Unit.INSTANCE;
+        } finally {
+          __db.endTransaction();
+        }
+      }
+    }, $completion);
+  }
+
+  @Override
+  public Object assignTeamForPlayers(final List<Long> playerIds, final long teamId,
+      final Continuation<? super Unit> $completion) {
+    return CoroutinesRoom.execute(__db, true, new Callable<Unit>() {
+      @Override
+      @NonNull
+      public Unit call() throws Exception {
+        final StringBuilder _stringBuilder = StringUtil.newStringBuilder();
+        _stringBuilder.append("UPDATE players SET teamId = ");
+        _stringBuilder.append("?");
+        _stringBuilder.append(" WHERE id IN (");
+        final int _inputSize = playerIds.size();
+        StringUtil.appendPlaceholders(_stringBuilder, _inputSize);
+        _stringBuilder.append(")");
+        final String _sql = _stringBuilder.toString();
+        final SupportSQLiteStatement _stmt = __db.compileStatement(_sql);
+        int _argIndex = 1;
+        _stmt.bindLong(_argIndex, teamId);
+        _argIndex = 2;
+        for (long _item : playerIds) {
+          _stmt.bindLong(_argIndex, _item);
+          _argIndex++;
+        }
+        __db.beginTransaction();
+        try {
+          _stmt.executeUpdateDelete();
+          __db.setTransactionSuccessful();
+          return Unit.INSTANCE;
+        } finally {
+          __db.endTransaction();
         }
       }
     }, $completion);

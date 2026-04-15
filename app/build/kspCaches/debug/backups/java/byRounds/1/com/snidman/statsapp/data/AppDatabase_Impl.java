@@ -29,6 +29,8 @@ import javax.annotation.processing.Generated;
 public final class AppDatabase_Impl extends AppDatabase {
   private volatile PlayerDao _playerDao;
 
+  private volatile TeamDao _teamDao;
+
   private volatile MatchDao _matchDao;
 
   private volatile StatEventDao _statEventDao;
@@ -36,21 +38,23 @@ public final class AppDatabase_Impl extends AppDatabase {
   @Override
   @NonNull
   protected SupportSQLiteOpenHelper createOpenHelper(@NonNull final DatabaseConfiguration config) {
-    final SupportSQLiteOpenHelper.Callback _openCallback = new RoomOpenHelper(config, new RoomOpenHelper.Delegate(1) {
+    final SupportSQLiteOpenHelper.Callback _openCallback = new RoomOpenHelper(config, new RoomOpenHelper.Delegate(2) {
       @Override
       public void createAllTables(@NonNull final SupportSQLiteDatabase db) {
-        db.execSQL("CREATE TABLE IF NOT EXISTS `players` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `jerseyNumber` INTEGER NOT NULL)");
+        db.execSQL("CREATE TABLE IF NOT EXISTS `players` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `jerseyNumber` INTEGER NOT NULL, `teamId` INTEGER)");
+        db.execSQL("CREATE TABLE IF NOT EXISTS `teams` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL)");
         db.execSQL("CREATE TABLE IF NOT EXISTS `matches` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `createdAt` INTEGER NOT NULL)");
         db.execSQL("CREATE TABLE IF NOT EXISTS `stat_events` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `playerId` INTEGER NOT NULL, `matchId` INTEGER NOT NULL, `setNumber` INTEGER NOT NULL, `skill` TEXT NOT NULL, `outcome` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, FOREIGN KEY(`playerId`) REFERENCES `players`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`matchId`) REFERENCES `matches`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )");
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_stat_events_playerId` ON `stat_events` (`playerId`)");
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_stat_events_matchId` ON `stat_events` (`matchId`)");
         db.execSQL("CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)");
-        db.execSQL("INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '7b7f824358ea95030a0d915f0b6c471f')");
+        db.execSQL("INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'e7fabb2fff6d45f717d00f347c063076')");
       }
 
       @Override
       public void dropAllTables(@NonNull final SupportSQLiteDatabase db) {
         db.execSQL("DROP TABLE IF EXISTS `players`");
+        db.execSQL("DROP TABLE IF EXISTS `teams`");
         db.execSQL("DROP TABLE IF EXISTS `matches`");
         db.execSQL("DROP TABLE IF EXISTS `stat_events`");
         final List<? extends RoomDatabase.Callback> _callbacks = mCallbacks;
@@ -97,10 +101,11 @@ public final class AppDatabase_Impl extends AppDatabase {
       @NonNull
       public RoomOpenHelper.ValidationResult onValidateSchema(
           @NonNull final SupportSQLiteDatabase db) {
-        final HashMap<String, TableInfo.Column> _columnsPlayers = new HashMap<String, TableInfo.Column>(3);
+        final HashMap<String, TableInfo.Column> _columnsPlayers = new HashMap<String, TableInfo.Column>(4);
         _columnsPlayers.put("id", new TableInfo.Column("id", "INTEGER", true, 1, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsPlayers.put("name", new TableInfo.Column("name", "TEXT", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsPlayers.put("jerseyNumber", new TableInfo.Column("jerseyNumber", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsPlayers.put("teamId", new TableInfo.Column("teamId", "INTEGER", false, 0, null, TableInfo.CREATED_FROM_ENTITY));
         final HashSet<TableInfo.ForeignKey> _foreignKeysPlayers = new HashSet<TableInfo.ForeignKey>(0);
         final HashSet<TableInfo.Index> _indicesPlayers = new HashSet<TableInfo.Index>(0);
         final TableInfo _infoPlayers = new TableInfo("players", _columnsPlayers, _foreignKeysPlayers, _indicesPlayers);
@@ -109,6 +114,18 @@ public final class AppDatabase_Impl extends AppDatabase {
           return new RoomOpenHelper.ValidationResult(false, "players(com.snidman.statsapp.data.PlayerEntity).\n"
                   + " Expected:\n" + _infoPlayers + "\n"
                   + " Found:\n" + _existingPlayers);
+        }
+        final HashMap<String, TableInfo.Column> _columnsTeams = new HashMap<String, TableInfo.Column>(2);
+        _columnsTeams.put("id", new TableInfo.Column("id", "INTEGER", true, 1, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsTeams.put("name", new TableInfo.Column("name", "TEXT", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        final HashSet<TableInfo.ForeignKey> _foreignKeysTeams = new HashSet<TableInfo.ForeignKey>(0);
+        final HashSet<TableInfo.Index> _indicesTeams = new HashSet<TableInfo.Index>(0);
+        final TableInfo _infoTeams = new TableInfo("teams", _columnsTeams, _foreignKeysTeams, _indicesTeams);
+        final TableInfo _existingTeams = TableInfo.read(db, "teams");
+        if (!_infoTeams.equals(_existingTeams)) {
+          return new RoomOpenHelper.ValidationResult(false, "teams(com.snidman.statsapp.data.TeamEntity).\n"
+                  + " Expected:\n" + _infoTeams + "\n"
+                  + " Found:\n" + _existingTeams);
         }
         final HashMap<String, TableInfo.Column> _columnsMatches = new HashMap<String, TableInfo.Column>(3);
         _columnsMatches.put("id", new TableInfo.Column("id", "INTEGER", true, 1, null, TableInfo.CREATED_FROM_ENTITY));
@@ -146,7 +163,7 @@ public final class AppDatabase_Impl extends AppDatabase {
         }
         return new RoomOpenHelper.ValidationResult(true, null);
       }
-    }, "7b7f824358ea95030a0d915f0b6c471f", "a965a7fb9864b4a3244f9bc78d5a5e87");
+    }, "e7fabb2fff6d45f717d00f347c063076", "8ad09048dbf8b5329f6c0e7a50bcfbfa");
     final SupportSQLiteOpenHelper.Configuration _sqliteConfig = SupportSQLiteOpenHelper.Configuration.builder(config.context).name(config.name).callback(_openCallback).build();
     final SupportSQLiteOpenHelper _helper = config.sqliteOpenHelperFactory.create(_sqliteConfig);
     return _helper;
@@ -157,7 +174,7 @@ public final class AppDatabase_Impl extends AppDatabase {
   protected InvalidationTracker createInvalidationTracker() {
     final HashMap<String, String> _shadowTablesMap = new HashMap<String, String>(0);
     final HashMap<String, Set<String>> _viewTables = new HashMap<String, Set<String>>(0);
-    return new InvalidationTracker(this, _shadowTablesMap, _viewTables, "players","matches","stat_events");
+    return new InvalidationTracker(this, _shadowTablesMap, _viewTables, "players","teams","matches","stat_events");
   }
 
   @Override
@@ -174,6 +191,7 @@ public final class AppDatabase_Impl extends AppDatabase {
         _db.execSQL("PRAGMA defer_foreign_keys = TRUE");
       }
       _db.execSQL("DELETE FROM `players`");
+      _db.execSQL("DELETE FROM `teams`");
       _db.execSQL("DELETE FROM `matches`");
       _db.execSQL("DELETE FROM `stat_events`");
       super.setTransactionSuccessful();
@@ -194,6 +212,7 @@ public final class AppDatabase_Impl extends AppDatabase {
   protected Map<Class<?>, List<Class<?>>> getRequiredTypeConverters() {
     final HashMap<Class<?>, List<Class<?>>> _typeConvertersMap = new HashMap<Class<?>, List<Class<?>>>();
     _typeConvertersMap.put(PlayerDao.class, PlayerDao_Impl.getRequiredConverters());
+    _typeConvertersMap.put(TeamDao.class, TeamDao_Impl.getRequiredConverters());
     _typeConvertersMap.put(MatchDao.class, MatchDao_Impl.getRequiredConverters());
     _typeConvertersMap.put(StatEventDao.class, StatEventDao_Impl.getRequiredConverters());
     return _typeConvertersMap;
@@ -224,6 +243,20 @@ public final class AppDatabase_Impl extends AppDatabase {
           _playerDao = new PlayerDao_Impl(this);
         }
         return _playerDao;
+      }
+    }
+  }
+
+  @Override
+  public TeamDao teamDao() {
+    if (_teamDao != null) {
+      return _teamDao;
+    } else {
+      synchronized(this) {
+        if(_teamDao == null) {
+          _teamDao = new TeamDao_Impl(this);
+        }
+        return _teamDao;
       }
     }
   }
