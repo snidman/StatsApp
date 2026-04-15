@@ -73,6 +73,7 @@ class MainActivity : ComponentActivity() {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
                     var showingManagementScreen by rememberSaveable { mutableStateOf(false) }
+                    var showingAddMatchScreen by rememberSaveable { mutableStateOf(false) }
                     val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())
                         .format(Date())
                     if (showingManagementScreen) {
@@ -87,18 +88,27 @@ class MainActivity : ComponentActivity() {
                             onUpdatePlayer = viewModel::updatePlayer,
                             onDeletePlayer = viewModel::deletePlayer
                         )
+                    } else if (showingAddMatchScreen) {
+                        AddMatchScreen(
+                            teams = uiState.teams,
+                            onBack = { showingAddMatchScreen = false },
+                            onCreateMatch = { name, teamId, opponent ->
+                                viewModel.addMatch(name, teamId, opponent)
+                                showingAddMatchScreen = false
+                            }
+                        )
                     } else {
                         StatCaptureScreen(
                             state = uiState,
                             onRecordStat = viewModel::recordStat,
                             onSelectMatch = viewModel::selectMatch,
                             onSelectSet = viewModel::selectSet,
-                            onCreateMatch = viewModel::addMatch,
                             onUpdateMatch = viewModel::updateMatch,
                             onDeleteSelectedMatch = viewModel::deleteSelectedMatch,
                             onDeleteSelectedSet = viewModel::deleteSelectedSet,
                             onSaveSetLineup = viewModel::saveSelectedSetLineup,
                             onOpenTeamManager = { showingManagementScreen = true },
+                            onOpenAddMatch = { showingAddMatchScreen = true },
                             onClearExportMessage = viewModel::clearExportMessage,
                             onExportCsv = {
                                 exportLauncher.launch("volleyball_stats_$timestamp.csv")
@@ -117,12 +127,12 @@ private fun StatCaptureScreen(
     onRecordStat: (Long, String, String) -> Unit,
     onSelectMatch: (Long) -> Unit,
     onSelectSet: (Int?) -> Unit,
-    onCreateMatch: (String, Long, String) -> Unit,
     onUpdateMatch: (Long, String, Long, String) -> Unit,
     onDeleteSelectedMatch: () -> Unit,
     onDeleteSelectedSet: () -> Unit,
     onSaveSetLineup: (SetRotationLineupState) -> Unit,
     onOpenTeamManager: () -> Unit,
+    onOpenAddMatch: () -> Unit,
     onClearExportMessage: () -> Unit,
     onExportCsv: () -> Unit
 ) {
@@ -147,9 +157,12 @@ private fun StatCaptureScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(16.dp),
-                        horizontalArrangement = Arrangement.End,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        Button(onClick = onOpenAddMatch) {
+                            Text("Add Match")
+                        }
                         Button(onClick = onOpenTeamManager) {
                             Text("Manage Teams & Players")
                         }
@@ -171,7 +184,6 @@ private fun StatCaptureScreen(
                     selectedSetLineup = state.selectedSetLineup,
                     onSelectMatch = onSelectMatch,
                     onSelectSet = onSelectSet,
-                    onCreateMatch = onCreateMatch,
                     onUpdateMatch = onUpdateMatch,
                     onDeleteSelectedMatch = onDeleteSelectedMatch,
                     onDeleteSelectedSet = onDeleteSelectedSet,
@@ -240,16 +252,12 @@ private fun FilterAndActionsCard(
     selectedSetLineup: SetRotationLineupState?,
     onSelectMatch: (Long) -> Unit,
     onSelectSet: (Int?) -> Unit,
-    onCreateMatch: (String, Long, String) -> Unit,
     onUpdateMatch: (Long, String, Long, String) -> Unit,
     onDeleteSelectedMatch: () -> Unit,
     onDeleteSelectedSet: () -> Unit,
     onSaveSetLineup: (SetRotationLineupState) -> Unit,
     onExportCsv: () -> Unit
 ) {
-    var matchName by remember { mutableStateOf("") }
-    var opponentTeamName by remember { mutableStateOf("") }
-    var createMatchTeamId by remember(teams) { mutableStateOf(teams.firstOrNull()?.team?.id) }
     var showEditMatchDialog by remember { mutableStateOf(false) }
     var showDeleteMatchDialog by remember { mutableStateOf(false) }
     var showDeleteSetDialog by remember { mutableStateOf(false) }
@@ -349,52 +357,12 @@ private fun FilterAndActionsCard(
 
             OutlinedTextField(
                 modifier = Modifier.fillMaxWidth(),
-                value = matchName,
-                onValueChange = { matchName = it },
-                label = { Text("New match name") },
+                value = selectedMatch?.opponentTeamName ?: "",
+                onValueChange = {},
+                label = { Text("Selected opponent") },
+                enabled = false,
                 singleLine = true
             )
-            OutlinedTextField(
-                modifier = Modifier.fillMaxWidth(),
-                value = opponentTeamName,
-                onValueChange = { opponentTeamName = it },
-                label = { Text("Opposing team name") },
-                singleLine = true
-            )
-            Text("Team playing this match", style = MaterialTheme.typography.titleMedium)
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                teams.forEach { roster ->
-                    val team = roster.team
-                    val selected = createMatchTeamId == team.id
-                    Button(onClick = { createMatchTeamId = team.id }) {
-                        Text(if (selected) "${team.name} *" else team.name)
-                    }
-                }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Button(onClick = {
-                    val trimmed = matchName.trim()
-                    val teamId = createMatchTeamId
-                    if (trimmed.isNotEmpty() && teamId != null) {
-                        onCreateMatch(trimmed, teamId, opponentTeamName.trim())
-                        matchName = ""
-                        opponentTeamName = ""
-                    }
-                }) {
-                    Text("Add Match")
-                }
-                OutlinedTextField(
-                    modifier = Modifier.weight(1f),
-                    value = selectedMatch?.opponentTeamName ?: "",
-                    onValueChange = {},
-                    label = { Text("Selected opponent") },
-                    enabled = false,
-                    singleLine = true
-                )
-            }
             OutlinedTextField(
                 modifier = Modifier.fillMaxWidth(),
                 value = selectedMatchTeamId?.let { teamNameById[it] } ?: "",
@@ -525,6 +493,98 @@ private fun EditMatchDialog(
             }
         }
     )
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun AddMatchScreen(
+    teams: List<TeamRosterState>,
+    onBack: () -> Unit,
+    onCreateMatch: (String, Long, String) -> Unit
+) {
+    var matchName by remember { mutableStateOf("") }
+    var opponentTeamName by remember { mutableStateOf("") }
+    var selectedTeamId by remember(teams) { mutableStateOf(teams.firstOrNull()?.team?.id) }
+
+    Scaffold(
+        topBar = {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text("Add Match", style = MaterialTheme.typography.headlineSmall)
+                    Text("Create a new match for stat capture", style = MaterialTheme.typography.bodyMedium)
+                }
+                Button(onClick = onBack) {
+                    Text("Back to Stats")
+                }
+            }
+        }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedTextField(
+                        modifier = Modifier.fillMaxWidth(),
+                        value = matchName,
+                        onValueChange = { matchName = it },
+                        label = { Text("Match name") },
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        modifier = Modifier.fillMaxWidth(),
+                        value = opponentTeamName,
+                        onValueChange = { opponentTeamName = it },
+                        label = { Text("Opposing team name") },
+                        singleLine = true
+                    )
+                    Text("Team playing this match", style = MaterialTheme.typography.titleMedium)
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        teams.forEach { roster ->
+                            val team = roster.team
+                            val selected = selectedTeamId == team.id
+                            Button(onClick = { selectedTeamId = team.id }) {
+                                Text(if (selected) "${team.name} *" else team.name)
+                            }
+                        }
+                    }
+
+                    Button(onClick = {
+                        val trimmed = matchName.trim()
+                        val teamId = selectedTeamId
+                        if (trimmed.isNotEmpty() && teamId != null) {
+                            onCreateMatch(trimmed, teamId, opponentTeamName.trim())
+                        }
+                    }) {
+                        Text("Create Match")
+                    }
+
+                    if (teams.isEmpty()) {
+                        Text(
+                            "Add a team first in Team & Player Manager before creating a match.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+            }
+        }
+    }
 }
 
 private enum class RotationSlotField {
@@ -1336,12 +1396,12 @@ private fun StatCaptureScreenPreview() {
             onRecordStat = { _, _, _ -> },
             onSelectMatch = {},
             onSelectSet = {},
-            onCreateMatch = { _, _, _ -> },
             onUpdateMatch = { _, _, _, _ -> },
             onDeleteSelectedMatch = {},
             onDeleteSelectedSet = {},
             onSaveSetLineup = {},
             onOpenTeamManager = {},
+            onOpenAddMatch = {},
             onClearExportMessage = {},
             onExportCsv = {}
         )
